@@ -1,0 +1,12 @@
+{
+  "projectId": "work-grove",
+  "appId": "1:396554131045:web:d9554604a79b71f26ed88c",
+  "apiKey": "AIzaSyBDDhN09F-RCcDvvHFDAay3yG0BMbuCUJg",
+  "authDomain": "work-grove.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "work-grove.firebasestorage.app",
+  "messagingSenderId": "396554131045",
+  "measurementId": "G-TRNRJQ37NC",
+  "oAuthClientId": "",
+  "recaptchaSiteKey": ""
+}
