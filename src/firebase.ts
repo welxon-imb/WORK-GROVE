@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { getAuth, GoogleAuthProvider, setPersistence, browserSessionPersistence } from 'firebase/auth';
 import { getFirestore, doc, getDocFromServer } from 'firebase/firestore';
 import { getAnalytics, isSupported } from 'firebase/analytics';
 import firebaseConfig from '../firebase-applet-config.json';
@@ -7,6 +7,13 @@ import firebaseConfig from '../firebase-applet-config.json';
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
 export const auth = getAuth(app);
+(async () => {
+  try {
+    await setPersistence(auth, browserSessionPersistence);
+  } catch (error) {
+    console.error("Auth persistence error:", error);
+  }
+})();
 export const googleProvider = new GoogleAuthProvider();
 
 isSupported().then(supported => {

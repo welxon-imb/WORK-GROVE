@@ -72,6 +72,11 @@
   }
 }
 
+@keyframes marquee {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(-100%); }
+}
+
 .animate-float {
   animation: float 4s ease-in-out infinite;
 }
@@ -90,6 +95,10 @@
 
 .animate-neon-border {
   animation: neon-border 4s ease-in-out infinite;
+}
+
+.animate-marquee {
+  animation: marquee 20s linear infinite;
 }
 
 .shimmer-effect {

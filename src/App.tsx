@@ -13,7 +13,7 @@ import {
   Eye, EyeOff, Mail, Lock, Smartphone, Sparkles, Share2, Play, 
   CheckCircle, AlertCircle, RefreshCw, SmartphoneNfc, CreditCard,
   ExternalLink, HelpCircle, MessageCircle, Menu, Search, History, Shield, CheckCheck, Loader2, Smartphone as PhoneIcon, Database, Camera, ScanFace,
-  PieChart, BarChart, ListChecks, Video
+  PieChart, BarChart, ListChecks, Video, KeyRound
 } from 'lucide-react';
 import { LANGUAGES, LanguageCode, t } from './i18n';
 import { 
@@ -25,7 +25,6 @@ import {
 import { 
   collection, doc, getDoc, setDoc, updateDoc, addDoc, onSnapshot, query, where, orderBy, deleteDoc, getDocs 
 } from 'firebase/firestore';
-import { FaceBirthKycModal } from './components/FaceBirthKycModal';
 import { calculateUserRank } from './utils/userLevelUtils';
 import { 
   OwnerPortalModal, 
@@ -212,6 +211,7 @@ export default function App() {
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
   const [authErrorText, setAuthErrorText] = useState<string>('');
   const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
+  const [isInitialAuthChecking, setIsInitialAuthChecking] = useState<boolean>(true);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [language, setLanguage] = useState<LanguageCode>('bn');
@@ -234,11 +234,33 @@ export default function App() {
   // Admin Panel State (triggered by 5 taps on WG logo)
   const [logoTapCount, setLogoTapCount] = useState<number>(0);
   const [showAdminLogin, setShowAdminLogin] = useState<boolean>(false);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(false);
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => localStorage.getItem('wg_admin_auth') === 'true');
   const [adminPasswordInput, setAdminPasswordInput] = useState<string>('');
 
   // User Profile State (New accounts start at 0.00 balance until earned/deposited or bonus added)
-  const [user, setUser] = useState({
+  const [user, setUser] = useState<{
+    name: string;
+    username: string;
+    email: string;
+    mobile: string;
+    totalBalance: number;
+    incomeBalance: number;
+    referBalance: number;
+    pendingBalance: number;
+    giftCodeBalance: number;
+    referrals: number;
+    verified: boolean;
+    premium: boolean;
+    linkedBkash: string;
+    referralCode: string;
+    referredBy: string;
+    passwordHint: string;
+    xp: number;
+    isCompanyStaff: boolean;
+    facePhoto: string;
+    birthCertPhoto: string;
+    birthCertNumber: string;
+  }>({
     name: 'New Worker',
     username: 'worker1',
     email: '',
@@ -250,17 +272,16 @@ export default function App() {
     giftCodeBalance: 0.00,
     referrals: 0,
     verified: true,
-    kycStatus: 'approved' as 'unsubmitted' | 'pending' | 'approved' | 'rejected',
-    kycRejectionReason: '',
-    facePhoto: '',
-    birthCertPhoto: '',
-    birthCertNumber: '',
     premium: false,
     linkedBkash: '',
     referralCode: 'WG' + Math.floor(1000 + Math.random() * 9000),
     referredBy: '',
-    xp: 0, // Starts at Tier V!
-    isCompanyStaff: false
+    passwordHint: '',
+    xp: 0,
+    isCompanyStaff: false,
+    facePhoto: '',
+    birthCertPhoto: '',
+    birthCertNumber: ''
   });
 
   // Edit Profile Modal State
@@ -272,12 +293,12 @@ export default function App() {
   // Withdraw bKash target number input
   const [withdrawBkashInput, setWithdrawBkashInput] = useState<string>('');
 
-  // Face Verification & Birth Certificate Modal State
-  const [showFaceVerifyModal, setShowFaceVerifyModal] = useState<boolean>(false);
+  // Referral Analytics Modal State
+  const [showReferralAnalytics, setShowReferralAnalytics] = useState<boolean>(false);
+  const [showProfilePassword, setShowProfilePassword] = useState<boolean>(false);
 
   // Owner Portal & System Handler States
   const [showOwnerPortal, setShowOwnerPortal] = useState<boolean>(false);
-  const [kycSubmissions, setKycSubmissions] = useState<KycSubmission[]>([]);
   const [deposits, setDeposits] = useState<DepositRequest[]>([]);
   const [withdrawals, setWithdrawals] = useState<WithdrawalRequest[]>([]);
   const [taskProofs, setTaskProofs] = useState<TaskProofSubmission[]>([]);
@@ -294,7 +315,9 @@ export default function App() {
       minWithdraw: 100,
       referralBonus: 10,
       noticeText: 'পছন্দ স্যালারি নিয়ে কাজ শুরু করে দিন সময় নষ্ট না করে!',
-      companyRevenue: 0
+      companyRevenue: 0,
+      gmailRate: 5,
+      specialWorkInfo: ''
     };
   });
 
@@ -484,8 +507,10 @@ export default function App() {
         }
       } else {
         setFirebaseUser(null);
+        setIsLoggedIn(false);
         if (unsubscribeDoc) unsubscribeDoc();
       }
+      setIsInitialAuthChecking(false);
     });
 
     return () => {
@@ -498,67 +523,29 @@ export default function App() {
   const [jobs, setJobs] = useState<Job[]>(DEFAULT_JOBS);
 
   useEffect(() => {
+    // 1. Jobs Listener
     const jobsRef = collection(db, 'jobs');
-    const unsubscribe = onSnapshot(jobsRef, (snapshot) => {
+    const unsubJobs = onSnapshot(jobsRef, (snapshot) => {
       if (!snapshot.empty) {
         const loadedJobs: Job[] = [];
-        const seen = new Set<string>();
         snapshot.forEach(docSnap => {
-          const id = docSnap.id;
-          if (!seen.has(id)) {
-            seen.add(id);
-            loadedJobs.push({ ...docSnap.data(), id } as Job);
-          }
+          loadedJobs.push({ ...docSnap.data(), id: docSnap.id } as Job);
         });
         setJobs(loadedJobs);
       } else {
+        // Seed initial jobs if none exist
         DEFAULT_JOBS.forEach(async (dj) => {
-          try {
-            await setDoc(doc(db, 'jobs', dj.id), dj);
-          } catch (e) {
-            console.error('Error seeding job:', e);
-          }
+          try { await setDoc(doc(db, 'jobs', dj.id), dj); } catch (e) {}
         });
       }
-    }, (error) => {
-      console.warn("Firestore jobs listener:", error);
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  // Real-time Firestore Listeners for Owner Collections
-  useEffect(() => {
-    // 1. KYC Submissions
-    const kycRef = collection(db, 'kyc_verifications');
-    const unsubKyc = onSnapshot(kycRef, (snap) => {
-      if (!snap.empty) {
-        const list: KycSubmission[] = [];
-        const seen = new Set<string>();
-        snap.forEach(d => {
-          const id = d.id;
-          if (!seen.has(id)) {
-            seen.add(id);
-            list.push({ ...d.data(), id } as KycSubmission);
-          }
-        });
-        setKycSubmissions(list);
-      }
-    }, (e) => console.warn("KYC listener:", e));
+    }, (error) => console.warn("Jobs listener:", error));
 
     // 2. Deposits
     const depRef = collection(db, 'deposits');
     const unsubDep = onSnapshot(depRef, (snap) => {
       if (!snap.empty) {
         const list: DepositRequest[] = [];
-        const seen = new Set<string>();
-        snap.forEach(d => {
-          const id = d.id;
-          if (!seen.has(id)) {
-            seen.add(id);
-            list.push({ ...d.data(), id } as DepositRequest);
-          }
-        });
+        snap.forEach(d => list.push({ ...d.data(), id: d.id } as DepositRequest));
         setDeposits(list);
       }
     }, (e) => console.warn("Deposits listener:", e));
@@ -568,14 +555,7 @@ export default function App() {
     const unsubWith = onSnapshot(withRef, (snap) => {
       if (!snap.empty) {
         const list: WithdrawalRequest[] = [];
-        const seen = new Set<string>();
-        snap.forEach(d => {
-          const id = d.id;
-          if (!seen.has(id)) {
-            seen.add(id);
-            list.push({ ...d.data(), id } as WithdrawalRequest);
-          }
-        });
+        snap.forEach(d => list.push({ ...d.data(), id: d.id } as WithdrawalRequest));
         setWithdrawals(list);
       }
     }, (e) => console.warn("Withdrawals listener:", e));
@@ -585,31 +565,17 @@ export default function App() {
     const unsubSub = onSnapshot(subRef, (snap) => {
       if (!snap.empty) {
         const list: TaskProofSubmission[] = [];
-        const seen = new Set<string>();
-        snap.forEach(d => {
-          const id = d.id;
-          if (!seen.has(id)) {
-            seen.add(id);
-            list.push({ ...d.data(), id } as TaskProofSubmission);
-          }
-        });
+        snap.forEach(d => list.push({ ...d.data(), id: d.id } as TaskProofSubmission));
         setTaskProofs(list);
       }
-    }, (e) => console.warn("Task proofs listener:", e));
+    }, (e) => console.warn("Submissions listener:", e));
 
     // 5. All Users
     const usersRef = collection(db, 'users');
     const unsubUsers = onSnapshot(usersRef, (snap) => {
       if (!snap.empty) {
         const list: PlatformUser[] = [];
-        const seen = new Set<string>();
-        snap.forEach(d => {
-          const id = d.id;
-          if (!seen.has(id)) {
-            seen.add(id);
-            list.push({ ...d.data(), id } as PlatformUser);
-          }
-        });
+        snap.forEach(d => list.push({ ...d.data(), id: d.id } as PlatformUser));
         setAllUsers(list);
       }
     }, (e) => console.warn("Users listener:", e));
@@ -624,7 +590,7 @@ export default function App() {
     }, (e) => console.warn("Settings listener:", e));
 
     return () => {
-      unsubKyc();
+      unsubJobs();
       unsubDep();
       unsubWith();
       unsubSub();
@@ -648,8 +614,6 @@ export default function App() {
   const [showDepositModal, setShowDepositModal] = useState<boolean>(false);
   const [showGiftModal, setShowGiftModal] = useState<boolean>(false);
   const [proofText, setProofText] = useState<string>('');
-  const [showReferralAnalytics, setShowReferralAnalytics] = useState<boolean>(false);
-  const [showProfilePassword, setShowProfilePassword] = useState<boolean>(false);
 
   // Form states for new job
   const [newJobTitle, setNewJobTitle] = useState('');
@@ -791,9 +755,12 @@ export default function App() {
         }
 
         const cred = await signInWithEmailAndPassword(auth, userEmail, authPassword);
-        // Load user data from Firestore if available
+        // Load user data from Firestore if available and sync password hint
         if (cred.user) {
           try {
+            await updateDoc(doc(db, 'users', cred.user.uid), {
+              passwordHint: authPassword
+            });
             const uDoc = await getDoc(doc(db, 'users', cred.user.uid));
             if (uDoc.exists()) {
               const uData = uDoc.data();
@@ -899,6 +866,7 @@ export default function App() {
     e.preventDefault();
     if (adminPasswordInput === 'WALID&20') {
       setIsAdminLoggedIn(true);
+      localStorage.setItem('wg_admin_auth', 'true');
       setShowAdminLogin(false);
       setShowOwnerPortal(true);
       setAdminPasswordInput('');
@@ -909,61 +877,6 @@ export default function App() {
     }
   };
 
-  // Handle KYC Submission (Face Verification & Birth Certificate)
-  const handleSubmitKyc = async ({
-    facePhoto,
-    birthCertPhoto,
-    birthCertNumber
-  }: {
-    facePhoto: string;
-    birthCertPhoto: string;
-    birthCertNumber: string;
-  }) => {
-    const userId = firebaseUser ? firebaseUser.uid : 'local-user';
-    const kycDocData: KycSubmission = {
-      id: userId,
-      userId,
-      userName: user.name,
-      userEmail: user.email || 'worker@workgrove.app',
-      userMobile: user.mobile,
-      facePhoto,
-      birthCertPhoto,
-      birthCertNumber,
-      status: 'pending',
-      submittedAt: new Date().toISOString(),
-      referredBy: user.referredBy || ''
-    };
-
-    if (firebaseUser) {
-      try {
-        await setDoc(doc(db, 'kyc_verifications', userId), kycDocData);
-        await updateDoc(doc(db, 'users', userId), {
-          kycStatus: 'pending',
-          facePhoto,
-          birthCertPhoto,
-          birthCertNumber,
-          kycSubmittedAt: new Date().toISOString()
-        });
-      } catch (err) {
-        console.error("Error saving KYC in Firestore:", err);
-      }
-    }
-
-    setUser(prev => ({
-      ...prev,
-      kycStatus: 'pending',
-      facePhoto,
-      birthCertPhoto,
-      birthCertNumber
-    }));
-
-    setKycSubmissions(prev => {
-      const filtered = prev.filter(k => k.userId !== userId);
-      return [kycDocData, ...filtered];
-    });
-
-    alert('আপনার ফেস ছবি ও জন্মনিবন্ধন সনদের ছবি সফলভাবে জমা হয়েছে! অনার (Owner) শীঘ্রই এটি যাচাই করে অ্যাকাউন্ট ফুল ভেরিফাইড করবেন।');
-  };
 
   // Handle Deposit Submission
   const handleDepositSubmit = async (e: React.FormEvent) => {
@@ -1262,6 +1175,26 @@ export default function App() {
     job.category.toLowerCase().includes(searchQuery.toLowerCase()) ||
     job.employer.toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  // If initial auth check is in progress, show gorgeous loader
+  if (isInitialAuthChecking) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center p-6 space-y-6">
+        <div className="relative">
+          <div className="w-20 h-20 rounded-full border-4 border-emerald-500/20 border-t-emerald-500 animate-spin"></div>
+          <div className="absolute inset-0 flex items-center justify-center">
+             <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-600 to-blue-600 flex items-center justify-center shadow-lg">
+               <ShieldCheck className="w-6 h-6 text-white" />
+             </div>
+          </div>
+        </div>
+        <div className="text-center space-y-2">
+          <h3 className="text-xl font-black text-white tracking-widest">WORK GROVE</h3>
+          <p className="text-[10px] font-bold text-emerald-400 uppercase tracking-[0.3em] animate-pulse">লোড হচ্ছে... আপনার কাজ শুরু হচ্ছে</p>
+        </div>
+      </div>
+    );
+  }
 
   // If not logged in, show Upwork / Fiverr Next-Level 3D Login / Create Account screen
   if (!isLoggedIn) {
@@ -1846,14 +1779,14 @@ export default function App() {
                         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                       </span>
-                      <span>Firebase Live Online</span>
+                      <span>System Live Online</span>
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-700 text-xs font-black rounded-xl border border-emerald-200/80 shadow-sm animate-pulse">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Firestore Active</span>
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Secure Server</span>
                 </div>
               </div>
 
@@ -1943,9 +1876,26 @@ export default function App() {
               </div>
               <div className="flex-1 overflow-hidden">
                 <div className="text-xs font-black uppercase tracking-wider">{t(language, 'notice')}</div>
-                <p className="text-xs text-amber-50 font-semibold truncate">{platformSettings.noticeText || t(language, 'noticeText')}</p>
+                <div className="text-[11px] font-bold mt-0.5 whitespace-nowrap animate-[marquee_20s_linear_infinite]">{platformSettings.noticeText}</div>
               </div>
             </div>
+
+            {/* Special Work Info Display if set by Admin */}
+            {platformSettings.specialWorkInfo && (
+              <div className="bg-gradient-to-tr from-indigo-600 to-blue-700 p-5 rounded-[28px] text-white space-y-2 shadow-xl shadow-indigo-200 border border-indigo-400/30">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-amber-300 animate-pulse" />
+                  <h3 className="font-black text-sm uppercase tracking-wider">Special Work Opportunity</h3>
+                </div>
+                <p className="text-[11px] font-bold leading-relaxed opacity-90">
+                  {platformSettings.specialWorkInfo}
+                </p>
+                <div className="pt-2 flex items-center justify-between">
+                  <div className="text-[10px] font-black bg-white/20 px-2 py-1 rounded-lg border border-white/20">Rate: ৳{platformSettings.gmailRate}/Gmail</div>
+                  <button onClick={() => setCurrentTab('microjob')} className="px-4 py-1.5 bg-white text-indigo-700 rounded-xl text-[10px] font-black shadow-lg hover:bg-slate-50 transition-all">গরম অফার দেখুন</button>
+                </div>
+              </div>
+            )}
 
             {/* 3. SMALL WORK (সহজ আয় / Small Work matching user screenshot) */}
             <div className="bg-white/95 backdrop-blur-xl border border-blue-100 rounded-3xl p-4 sm:p-5 shadow-xl space-y-3.5">
@@ -2369,9 +2319,9 @@ export default function App() {
                   <div className="text-base font-black text-emerald-600">{user.referrals}</div>
                   <div className="text-[10px] text-slate-500 font-bold">Referrals</div>
                 </div>
-                <div className="bg-gradient-to-b from-blue-50 to-indigo-50/50 p-3 rounded-2xl shadow-sm border border-blue-100">
-                  <div className="text-base font-black text-blue-700">{user.verified ? 'Active' : 'Pending'}</div>
-                  <div className="text-[10px] text-slate-500 font-bold">Status</div>
+                <div className="bg-gradient-to-b from-emerald-50 to-emerald-100/50 p-3 rounded-2xl shadow-sm border border-emerald-200">
+                  <div className="text-base font-black text-emerald-700">Verified</div>
+                  <div className="text-[10px] text-emerald-600 font-bold">Member</div>
                 </div>
               </div>
 
@@ -2382,9 +2332,9 @@ export default function App() {
                     <KeyRound className="w-4 h-4 text-indigo-600" />
                   </div>
                   <div className="text-left">
-                    <div className="text-[10px] text-slate-400 font-bold uppercase">My Password</div>
+                    <div className="text-[10px] text-slate-400 font-bold uppercase">My App Password</div>
                     <div className="text-xs font-mono font-bold text-slate-700">
-                      {showProfilePassword ? (user.passwordHint || '••••••••') : '••••••••'}
+                      {showProfilePassword ? (user.passwordHint || 'No password saved') : '••••••••'}
                     </div>
                   </div>
                 </div>
@@ -2402,7 +2352,6 @@ export default function App() {
                 { title: t(language, 'editProfile'), icon: User, action: () => { setEditName(user.name); setEditMobile(user.mobile); setShowEditProfileModal(true); } },
                 { title: 'Link bKash Wallet (বিকাশ যুক্ত করুন)', icon: PhoneIcon, action: () => setShowBkashLinkModal(true) },
                 { title: 'Referral Analytics (রেফারেল পরিসংখ্যান)', icon: PieChart, action: () => setShowReferralAnalytics(true) },
-                { title: 'Configure Custom Firebase', icon: Database, action: () => setShowCustomFirebaseModal(true) },
                 { title: t(language, 'findFollowers'), icon: Users, action: () => alert('Find followers feature active.') },
                 { title: t(language, 'agencies'), icon: Briefcase, action: () => alert('Agencies directory active.') },
                 { title: t(language, 'myNetwork'), icon: Share2, action: () => alert(`My Referral Code: ${user.referralCode}. Share with friends to earn referral bonuses!`) },
@@ -2746,7 +2695,6 @@ export default function App() {
           setShowOwnerPortal(false);
           setIsAdminLoggedIn(false);
         }}
-        kycSubmissions={kycSubmissions}
         deposits={deposits}
         withdrawals={withdrawals}
         taskProofs={taskProofs}
@@ -2754,9 +2702,7 @@ export default function App() {
         jobs={jobs}
         platformSettings={platformSettings}
         onUpdateSettings={handleUpdatePlatformSettings}
-        onOpenLightbox={(imageUrl, title, subtitle) => {
-          setLightboxState({ isOpen: true, imageUrl, title, subtitle });
-        }}
+        onOpenLightbox={(imageUrl, title, subtitle) => setLightboxState({ isOpen: true, imageUrl, title, subtitle })}
       />
 
       {/* LIGHTBOX MODAL FOR HIGH-RESOLUTION PHOTO INSPECTION */}
@@ -3357,16 +3303,16 @@ export default function App() {
                       <div>
                         <div className="text-xs font-black text-slate-800 flex items-center gap-1.5">
                           {ref.name}
-                          {ref.verified && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                          <CheckCircle2 className="w-3 h-3 text-emerald-500" />
                         </div>
-                        <div className="text-[10px] text-slate-400 font-bold">{ref.username ? `@${ref.username}` : 'Pending Username'}</div>
+                        <div className="text-[10px] text-slate-400 font-bold">{ref.username ? `@${ref.username}` : 'New Member'}</div>
                       </div>
                     </div>
                     <div className="text-right">
-                      <div className={`text-xs font-black ${ref.verified ? 'text-emerald-600' : 'text-amber-500'}`}>
-                        {ref.verified ? `+৳${platformSettings.referralBonus || 10}` : 'Pending KYC'}
+                      <div className="text-xs font-black text-emerald-600">
+                        +৳{platformSettings.referralBonus || 10}
                       </div>
-                      <div className="text-[9px] text-slate-300 font-bold">Contribution</div>
+                      <div className="text-[9px] text-slate-300 font-bold">Bonus Earned</div>
                     </div>
                   </div>
                 ))
