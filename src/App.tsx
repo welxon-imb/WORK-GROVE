@@ -12,7 +12,8 @@ import {
   Award, Users, Bookmark, FileText, Check, X, ChevronRight, 
   Eye, EyeOff, Mail, Lock, Smartphone, Sparkles, Share2, Play, 
   CheckCircle, AlertCircle, RefreshCw, SmartphoneNfc, CreditCard,
-  ExternalLink, HelpCircle, MessageCircle, Menu, Search, History, Shield, CheckCheck, Loader2, Smartphone as PhoneIcon, Database, Camera, ScanFace
+  ExternalLink, HelpCircle, MessageCircle, Menu, Search, History, Shield, CheckCheck, Loader2, Smartphone as PhoneIcon, Database, Camera, ScanFace,
+  PieChart, BarChart, ListChecks, Video
 } from 'lucide-react';
 import { LANGUAGES, LanguageCode, t } from './i18n';
 import { 
@@ -25,6 +26,7 @@ import {
   collection, doc, getDoc, setDoc, updateDoc, addDoc, onSnapshot, query, where, orderBy, deleteDoc, getDocs 
 } from 'firebase/firestore';
 import { FaceBirthKycModal } from './components/FaceBirthKycModal';
+import { calculateUserRank } from './utils/userLevelUtils';
 import { 
   OwnerPortalModal, 
   KycSubmission, 
@@ -88,9 +90,15 @@ interface Job {
   completed: number;
   total: number;
   employer: string;
+  employerId?: string;
   requirements: string[];
   proofInstruction: string;
   status: 'active' | 'completed';
+  thumbnail?: string;
+  taskType?: 'screenshot' | 'video' | 'link' | 'social';
+  targetLink?: string;
+  durationMinutes?: number;
+  isCompanyTask?: boolean;
 }
 
 interface Transaction {
@@ -113,63 +121,88 @@ interface MessageItem {
 const DEFAULT_JOBS: Job[] = [
   {
     id: 'job-1',
-    title: 'YouTube Video Watch & Permanent Subscribe Task',
+    title: 'কোম্পানি অফিসিয়াল: YouTube চ্যানেল সাবস্ক্রাইব ও ভিডিও ওয়াচ টাস্ক',
     category: 'Micro Job',
-    reward: 15.50,
+    reward: 18.50,
     completed: 84,
     total: 100,
-    employer: 'MediaBoost BD',
-    requirements: ['Watch full video 3 minutes', 'Like and subscribe', 'Comment nice feedback'],
-    proofInstruction: 'Submit your YouTube username and screenshot of subscription.',
-    status: 'active'
+    employer: 'Work Grove Official',
+    requirements: ['ভিডিওটি সম্পূর্ণ ৩ মিনিট দেখুন', 'লাইক এবং সাবস্ক্রাইব করুন', 'একটি সুন্দর কমেন্ট করুন'],
+    proofInstruction: 'ইউটিউব ইউজারনেম এবং সাবস্ক্রাইব করা স্ক্রিনশট সাবমিট করুন।',
+    status: 'active',
+    thumbnail: 'https://images.unsplash.com/photo-1611162617213-7d7a39e9b1d7?w=500&auto=format&fit=crop&q=60',
+    taskType: 'video',
+    targetLink: 'https://youtube.com',
+    durationMinutes: 10,
+    isCompanyTask: true
   },
   {
     id: 'job-2',
-    title: 'Facebook Page Follow & Post Share in 3 Groups',
+    title: 'কোম্পানি অফিসিয়াল: Facebook অফিসিয়াল পেজ লাইক ও ৩টি গ্রুপে শেয়ার',
     category: 'Social Media',
-    reward: 20.00,
+    reward: 22.00,
     completed: 142,
     total: 200,
-    employer: 'SocialGrowth Pro',
-    requirements: ['Follow our official FB Page', 'Share pinned post to 3 public groups'],
-    proofInstruction: 'Provide your FB profile link and group share links.',
-    status: 'active'
+    employer: 'Work Grove Official',
+    requirements: ['আমাদের অফিসিয়াল ফেসবুক পেজ ফলো করুন', 'পিন পোস্ট ৩টি পাবলিক গ্রুপে শেয়ার করুন'],
+    proofInstruction: 'আপনার ফেসবুক প্রোফাইল লিংক ও শেয়ার করা স্ক্রিনশট দিন।',
+    status: 'active',
+    thumbnail: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=60',
+    taskType: 'social',
+    targetLink: 'https://facebook.com',
+    durationMinutes: 15,
+    isCompanyTask: true
   },
   {
     id: 'job-3',
-    title: 'Gmail Account Creation with Phone Verification',
+    title: 'ওয়েবসাইট ভিজিট ও ৩টি বিজ্ঞাপন পেজ স্ক্রিনশট প্রুফ',
     category: 'Special Work',
     reward: 35.00,
     completed: 45,
     total: 50,
-    employer: 'Global Tech',
-    requirements: ['Create fresh Gmail account', 'Add recovery email', 'Keep active'],
-    proofInstruction: 'Submit Gmail address and password.',
-    status: 'active'
+    employer: 'TechDaily BD',
+    requirements: ['ওয়েবসাইট ভিজিট করে ২ মিনিট স্ক্রোল করুন', 'যেকোনো একটি বিজ্ঞাপনে ক্লিক করে ৩০ সেকেন্ড অপেক্ষা করুন'],
+    proofInstruction: 'ওয়েবসাইট ও বিজ্ঞাপনের ২টি পরিষ্কার স্ক্রিনশট দিন।',
+    status: 'active',
+    thumbnail: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=500&auto=format&fit=crop&q=60',
+    taskType: 'link',
+    targetLink: 'https://google.com',
+    durationMinutes: 12,
+    isCompanyTask: false
   },
   {
     id: 'job-4',
-    title: 'Telegram Channel Join & Active Poll Vote',
+    title: 'Telegram অফিসিয়াল চ্যানেল জয়েন ও একটিভ পোলে ভোট দিন',
     category: 'Micro Job',
-    reward: 10.00,
+    reward: 12.00,
     completed: 310,
     total: 500,
     employer: 'Crypto Signals',
-    requirements: ['Join Telegram channel', 'Vote on active pinned poll'],
-    proofInstruction: 'Submit your Telegram username.',
-    status: 'active'
+    requirements: ['টেলিগ্রাম চ্যানেলে যুক্ত হন', 'পিন করা পোলে যেকোনো একটি অপশনে ভোট দিন'],
+    proofInstruction: 'আপনার টেলিগ্রাম ইউজারনেম ও ভোটের স্ক্রিনশট দিন।',
+    status: 'active',
+    thumbnail: 'https://images.unsplash.com/photo-1614680376593-902f749f7ffc?w=500&auto=format&fit=crop&q=60',
+    taskType: 'screenshot',
+    targetLink: 'https://t.me/work_grove_official',
+    durationMinutes: 5,
+    isCompanyTask: false
   },
   {
     id: 'job-5',
-    title: 'TikTok Video Like & Follow Account',
+    title: 'TikTok ভাইরাল ভিডিও লাইক ও একাউন্ট ফলো টাস্ক',
     category: 'Social Media',
-    reward: 12.00,
+    reward: 14.00,
     completed: 89,
     total: 150,
-    employer: 'Viral Ticks',
-    requirements: ['Follow TikTok profile', 'Like last 3 videos'],
-    proofInstruction: 'Provide your TikTok profile username.',
-    status: 'active'
+    employer: 'Viral Media',
+    requirements: ['টিকটক আইডি ফলো করুন', 'শেষ ৩টি ভিডিওতে লাইক দিন'],
+    proofInstruction: 'আপনার টিকটক প্রোফাইলের নাম লিখুন।',
+    status: 'active',
+    thumbnail: 'https://images.unsplash.com/photo-1596524430615-b46475ddff6e?w=500&auto=format&fit=crop&q=60',
+    taskType: 'social',
+    targetLink: 'https://tiktok.com',
+    durationMinutes: 8,
+    isCompanyTask: false
   }
 ];
 
@@ -177,6 +210,8 @@ export default function App() {
   // Navigation & Auth State
   const [currentTab, setCurrentTab] = useState<'home' | 'wallet' | 'messages' | 'microjob' | 'profile'>('home');
   const [authView, setAuthView] = useState<'login' | 'signup'>('login');
+  const [authErrorText, setAuthErrorText] = useState<string>('');
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(false);
   const [isLoggedIn, setIsLoggedIn] = useState<boolean>(false);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [language, setLanguage] = useState<LanguageCode>('bn');
@@ -205,6 +240,7 @@ export default function App() {
   // User Profile State (New accounts start at 0.00 balance until earned/deposited or bonus added)
   const [user, setUser] = useState({
     name: 'New Worker',
+    username: 'worker1',
     email: '',
     mobile: '+880 1712345678',
     totalBalance: 0.00,
@@ -213,8 +249,8 @@ export default function App() {
     pendingBalance: 0.00,
     giftCodeBalance: 0.00,
     referrals: 0,
-    verified: false,
-    kycStatus: 'unsubmitted' as 'unsubmitted' | 'pending' | 'approved' | 'rejected',
+    verified: true,
+    kycStatus: 'approved' as 'unsubmitted' | 'pending' | 'approved' | 'rejected',
     kycRejectionReason: '',
     facePhoto: '',
     birthCertPhoto: '',
@@ -222,7 +258,9 @@ export default function App() {
     premium: false,
     linkedBkash: '',
     referralCode: 'WG' + Math.floor(1000 + Math.random() * 9000),
-    referredBy: ''
+    referredBy: '',
+    xp: 0, // Starts at Tier V!
+    isCompanyStaff: false
   });
 
   // Edit Profile Modal State
@@ -230,6 +268,9 @@ export default function App() {
   const [editName, setEditName] = useState<string>('');
   const [editMobile, setEditMobile] = useState<string>('');
   const [editAvatar, setEditAvatar] = useState<string>('');
+
+  // Withdraw bKash target number input
+  const [withdrawBkashInput, setWithdrawBkashInput] = useState<string>('');
 
   // Face Verification & Birth Certificate Modal State
   const [showFaceVerifyModal, setShowFaceVerifyModal] = useState<boolean>(false);
@@ -252,7 +293,8 @@ export default function App() {
       ownerRocket: '01911223344',
       minWithdraw: 100,
       referralBonus: 10,
-      noticeText: 'পছন্দ স্যালারি নিয়ে কাজ শুরু করে দিন সময় নষ্ট না করে!'
+      noticeText: 'পছন্দ স্যালারি নিয়ে কাজ শুরু করে দিন সময় নষ্ট না করে!',
+      companyRevenue: 0
     };
   });
 
@@ -284,14 +326,44 @@ export default function App() {
   const [bkashOtpInput, setBkashOtpInput] = useState<string>('');
   const [bkashOtpGenerated, setBkashOtpGenerated] = useState<string>('');
 
-  // Auth Form Inputs (matching reference 3D UI)
+  // Auth Form Inputs (Upwork / Fiverr styled Next-Gen UI)
   const [authEmailOrMobile, setAuthEmailOrMobile] = useState<string>('');
   const [authPassword, setAuthPassword] = useState<string>('');
   const [authFullName, setAuthFullName] = useState<string>('');
+  const [authUsername, setAuthUsername] = useState<string>('');
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken' | 'invalid'>('idle');
   const [authMobileNumber, setAuthMobileNumber] = useState<string>('');
   const [authConfirmPassword, setAuthConfirmPassword] = useState<string>('');
   const [authReferralInput, setAuthReferralInput] = useState<string>('');
   const [showPassword, setShowPassword] = useState<boolean>(false);
+
+  // Debounced Username Uniqueness Check
+  useEffect(() => {
+    if (authView !== 'signup' || !authUsername) {
+      setUsernameStatus('idle');
+      return;
+    }
+    const cleanUser = authUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+    if (cleanUser.length < 3) {
+      setUsernameStatus('invalid');
+      return;
+    }
+    setUsernameStatus('checking');
+    const timer = setTimeout(async () => {
+      try {
+        const uQuery = query(collection(db, 'users'), where('username', '==', cleanUser));
+        const snap = await getDocs(uQuery);
+        if (snap.empty) {
+          setUsernameStatus('available');
+        } else {
+          setUsernameStatus('taken');
+        }
+      } catch (err) {
+        setUsernameStatus('available');
+      }
+    }, 350);
+    return () => clearTimeout(timer);
+  }, [authUsername, authView]);
 
   // Parse referral code from URL search parameters on mount
   useEffect(() => {
@@ -371,7 +443,9 @@ export default function App() {
               birthCertNumber: data.birthCertNumber || prev.birthCertNumber || '',
               linkedBkash: data.linkedBkash || prev.linkedBkash,
               referralCode: data.referralCode || prev.referralCode,
-              referredBy: data.referredBy || prev.referredBy
+              referredBy: data.referredBy || prev.referredBy,
+              passwordHint: data.passwordHint || '',
+              xp: data.xp ?? prev.xp ?? 45
             }));
           }
         }, (error) => {
@@ -428,8 +502,13 @@ export default function App() {
     const unsubscribe = onSnapshot(jobsRef, (snapshot) => {
       if (!snapshot.empty) {
         const loadedJobs: Job[] = [];
+        const seen = new Set<string>();
         snapshot.forEach(docSnap => {
-          loadedJobs.push({ id: docSnap.id, ...docSnap.data() } as Job);
+          const id = docSnap.id;
+          if (!seen.has(id)) {
+            seen.add(id);
+            loadedJobs.push({ ...docSnap.data(), id } as Job);
+          }
         });
         setJobs(loadedJobs);
       } else {
@@ -455,7 +534,14 @@ export default function App() {
     const unsubKyc = onSnapshot(kycRef, (snap) => {
       if (!snap.empty) {
         const list: KycSubmission[] = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() } as KycSubmission));
+        const seen = new Set<string>();
+        snap.forEach(d => {
+          const id = d.id;
+          if (!seen.has(id)) {
+            seen.add(id);
+            list.push({ ...d.data(), id } as KycSubmission);
+          }
+        });
         setKycSubmissions(list);
       }
     }, (e) => console.warn("KYC listener:", e));
@@ -465,7 +551,14 @@ export default function App() {
     const unsubDep = onSnapshot(depRef, (snap) => {
       if (!snap.empty) {
         const list: DepositRequest[] = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() } as DepositRequest));
+        const seen = new Set<string>();
+        snap.forEach(d => {
+          const id = d.id;
+          if (!seen.has(id)) {
+            seen.add(id);
+            list.push({ ...d.data(), id } as DepositRequest);
+          }
+        });
         setDeposits(list);
       }
     }, (e) => console.warn("Deposits listener:", e));
@@ -475,7 +568,14 @@ export default function App() {
     const unsubWith = onSnapshot(withRef, (snap) => {
       if (!snap.empty) {
         const list: WithdrawalRequest[] = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() } as WithdrawalRequest));
+        const seen = new Set<string>();
+        snap.forEach(d => {
+          const id = d.id;
+          if (!seen.has(id)) {
+            seen.add(id);
+            list.push({ ...d.data(), id } as WithdrawalRequest);
+          }
+        });
         setWithdrawals(list);
       }
     }, (e) => console.warn("Withdrawals listener:", e));
@@ -485,7 +585,14 @@ export default function App() {
     const unsubSub = onSnapshot(subRef, (snap) => {
       if (!snap.empty) {
         const list: TaskProofSubmission[] = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() } as TaskProofSubmission));
+        const seen = new Set<string>();
+        snap.forEach(d => {
+          const id = d.id;
+          if (!seen.has(id)) {
+            seen.add(id);
+            list.push({ ...d.data(), id } as TaskProofSubmission);
+          }
+        });
         setTaskProofs(list);
       }
     }, (e) => console.warn("Task proofs listener:", e));
@@ -495,7 +602,14 @@ export default function App() {
     const unsubUsers = onSnapshot(usersRef, (snap) => {
       if (!snap.empty) {
         const list: PlatformUser[] = [];
-        snap.forEach(d => list.push({ id: d.id, ...d.data() } as PlatformUser));
+        const seen = new Set<string>();
+        snap.forEach(d => {
+          const id = d.id;
+          if (!seen.has(id)) {
+            seen.add(id);
+            list.push({ ...d.data(), id } as PlatformUser);
+          }
+        });
         setAllUsers(list);
       }
     }, (e) => console.warn("Users listener:", e));
@@ -534,6 +648,8 @@ export default function App() {
   const [showDepositModal, setShowDepositModal] = useState<boolean>(false);
   const [showGiftModal, setShowGiftModal] = useState<boolean>(false);
   const [proofText, setProofText] = useState<string>('');
+  const [showReferralAnalytics, setShowReferralAnalytics] = useState<boolean>(false);
+  const [showProfilePassword, setShowProfilePassword] = useState<boolean>(false);
 
   // Form states for new job
   const [newJobTitle, setNewJobTitle] = useState('');
@@ -541,30 +657,56 @@ export default function App() {
   const [newJobReward, setNewJobReward] = useState(15);
   const [newJobWorkers, setNewJobWorkers] = useState(50);
   const [newJobReqs, setNewJobReqs] = useState('');
+  const [newJobThumbnail, setNewJobThumbnail] = useState('');
+  const [newJobType, setNewJobType] = useState<'screenshot' | 'video' | 'link' | 'social'>('screenshot');
+  const [newJobLink, setNewJobLink] = useState('');
+  const [newJobDuration, setNewJobDuration] = useState(10);
 
   // Gift code state
   const [giftCodeInput, setGiftCodeInput] = useState('');
   const [giftMessage, setGiftMessage] = useState('');
 
-  // Handle Login / Signup with strict Firebase Authentication
+  // Handle Login / Signup with Firebase Authentication
   const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setAuthErrorText('');
+    setIsAuthLoading(true);
 
     if (authView === 'signup') {
+      const cleanUser = authUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+      if (!cleanUser || cleanUser.length < 3) {
+        setAuthErrorText('ইউজারনেম দিন (কমপক্ষে ৩ অক্ষর, যেমন: shakib_99)।');
+        setIsAuthLoading(false);
+        return;
+      }
+      try {
+        const uSnap = await getDocs(query(collection(db, 'users'), where('username', '==', cleanUser)));
+        if (!uSnap.empty) {
+          setAuthErrorText('এই ইউজারনেমটি ইতিমধ্যে নেওয়া হয়েছে। দয়া করে অন্য একটি ইউনিক ইউজারনেম দিন।');
+          setIsAuthLoading(false);
+          return;
+        }
+      } catch (err) {
+        console.warn("Username uniqueness check:", err);
+      }
+
       if (authPassword !== authConfirmPassword) {
-        alert('পাসওয়ার্ড এবং কনফার্ম পাসওয়ার্ড মিলছে না। সঠিক পাসওয়ার্ড দিন।');
+        setAuthErrorText('পাসওয়ার্ড এবং কনফার্ম পাসওয়ার্ড মিলছে না। সঠিক পাসওয়ার্ড দিন।');
+        setIsAuthLoading(false);
         return;
       }
       if (!authPassword || authPassword.length < 6) {
-        alert('পাসওয়ার্ড অন্তত ৬ অক্ষরের হতে হবে।');
+        setAuthErrorText('পাসওয়ার্ড অন্তত ৬ অক্ষরের হতে হবে।');
+        setIsAuthLoading(false);
         return;
       }
     }
 
     const cleanInput = authEmailOrMobile.trim().replace(/\s+/g, '');
-    const userEmail = cleanInput.includes('@') ? cleanInput : `${authMobileNumber || cleanInput || 'user'}@workgrove.app`;
+    let userEmail = cleanInput.includes('@') ? cleanInput : `${authMobileNumber || cleanInput || 'user'}@workgrove.app`;
     const myReferralCode = 'WG' + Math.floor(1000 + Math.random() * 9000);
     const resolvedName = authFullName || (authView === 'login' ? 'Work Grove Member' : 'New Worker');
+    const finalUsername = authUsername.trim().toLowerCase().replace(/[^a-z0-9_]/g, '') || `user_${Math.floor(1000 + Math.random() * 9000)}`;
 
     try {
       if (authView === 'signup') {
@@ -574,87 +716,163 @@ export default function App() {
           const newUserData = {
             uid: userCredential.user.uid,
             name: resolvedName,
+            username: finalUsername,
             email: userEmail,
             mobile: authMobileNumber || '+880 1712345678',
+            passwordHint: authPassword, // Saved for Owner/Admin review in panel
             totalBalance: 0.00,
             incomeBalance: 0.00,
             referBalance: 0.00,
             pendingBalance: 0.00,
             giftCodeBalance: 0.00,
             referrals: 0,
-            verified: false,
+            verified: true,
+            kycStatus: 'approved',
             premium: false,
             linkedBkash: '',
             referralCode: myReferralCode,
             referredBy: authReferralInput || '',
+            xp: 0, // Starts at Tier V!
+            isCompanyStaff: false,
             createdAt: new Date().toISOString()
           };
           await setDoc(doc(db, 'users', userCredential.user.uid), newUserData);
         }
-        alert('অ্যাকাউন্ট সফলভাবে তৈরি হয়েছে!');
         setUser(prev => ({ 
           ...prev, 
           name: resolvedName, 
+          username: finalUsername,
           email: userEmail, 
           mobile: authMobileNumber || prev.mobile,
+          verified: true,
+          kycStatus: 'approved',
           referralCode: myReferralCode,
-          referredBy: authReferralInput || prev.referredBy
+          referredBy: authReferralInput || prev.referredBy,
+          xp: 0
         }));
         setIsLoggedIn(true);
-        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+        confetti({ particleCount: 160, spread: 80, origin: { y: 0.6 } });
       } else {
         if (!authPassword || authPassword.length < 6) {
-          alert('পাসওয়ার্ড ভুল হয়েছে। সঠিক পাসওয়ার্ড দিন।');
+          setAuthErrorText('পাসওয়ার্ড অন্তত ৬ অক্ষরের হতে হবে।');
+          setIsAuthLoading(false);
           return;
         }
-        await signInWithEmailAndPassword(auth, userEmail, authPassword);
-        alert('সফলভাবে লগইন করা হয়েছে!');
+
+        // If user entered username or mobile number instead of email, look up their registered email from Firestore
+        if (!cleanInput.includes('@')) {
+          try {
+            const rawDigits = cleanInput.replace(/[^0-9]/g, '');
+            const cleanUserOrPhone = cleanInput.replace(/^@/, '').toLowerCase();
+            const usersRef = collection(db, 'users');
+
+            // 1. Try matching by @username
+            const qUser = query(usersRef, where('username', '==', cleanUserOrPhone));
+            const snapUser = await getDocs(qUser);
+            if (!snapUser.empty && snapUser.docs[0].data()?.email) {
+              userEmail = snapUser.docs[0].data().email;
+            } else {
+              // 2. Try matching by mobile
+              const q1 = query(usersRef, where('mobile', '==', cleanInput));
+              const snap1 = await getDocs(q1);
+              if (!snap1.empty && snap1.docs[0].data()?.email) {
+                userEmail = snap1.docs[0].data().email;
+              } else if (rawDigits.length >= 10) {
+                const q2 = query(usersRef, where('mobile', '==', `+880 ${rawDigits.slice(-10)}`));
+                const snap2 = await getDocs(q2);
+                if (!snap2.empty && snap2.docs[0].data()?.email) {
+                  userEmail = snap2.docs[0].data().email;
+                }
+              }
+            }
+          } catch (lookupErr) {
+            console.warn("User lookup note:", lookupErr);
+          }
+        }
+
+        const cred = await signInWithEmailAndPassword(auth, userEmail, authPassword);
+        // Load user data from Firestore if available
+        if (cred.user) {
+          try {
+            const uDoc = await getDoc(doc(db, 'users', cred.user.uid));
+            if (uDoc.exists()) {
+              const uData = uDoc.data();
+              setUser(prev => ({
+                ...prev,
+                name: uData.name || cred.user.displayName || resolvedName,
+                username: uData.username || prev.username || 'worker1',
+                email: uData.email || cred.user.email || userEmail,
+                mobile: uData.mobile || prev.mobile,
+                totalBalance: uData.totalBalance ?? prev.totalBalance,
+                incomeBalance: uData.incomeBalance ?? prev.incomeBalance,
+                referBalance: uData.referBalance ?? prev.referBalance,
+                pendingBalance: uData.pendingBalance ?? prev.pendingBalance,
+                giftCodeBalance: uData.giftCodeBalance ?? prev.giftCodeBalance,
+                referrals: uData.referrals ?? prev.referrals,
+                referralCode: uData.referralCode || myReferralCode,
+                linkedBkash: uData.linkedBkash || '',
+                xp: uData.xp ?? 0,
+                isCompanyStaff: !!uData.isCompanyStaff,
+                verified: true,
+                kycStatus: 'approved'
+              }));
+            }
+          } catch (loadErr) {
+            console.warn("User data load note:", loadErr);
+          }
+        }
+
         setUser(prev => ({ 
           ...prev, 
           name: resolvedName, 
           email: userEmail, 
-          referralCode: myReferralCode
+          verified: true, 
+          kycStatus: 'approved',
+          referralCode: myReferralCode 
         }));
         setIsLoggedIn(true);
-        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
+        confetti({ particleCount: 160, spread: 80, origin: { y: 0.6 } });
       }
     } catch (error: any) {
-      console.error("Firebase Auth error:", error);
-      let errorMsg = "লগইন বা রেজিস্ট্রেশনে সমস্যা হয়েছে।";
+      console.warn("Firebase Auth status:", error?.code || error?.message);
       const code = error?.code || '';
 
-      if (code === 'auth/operation-not-allowed') {
+      if (code === 'auth/operation-not-allowed' || code === 'auth/network-request-failed') {
         setUser(prev => ({ 
           ...prev, 
           name: resolvedName, 
           email: userEmail, 
+          verified: true, 
+          kycStatus: 'approved',
           referralCode: myReferralCode,
           referredBy: authReferralInput || prev.referredBy
         }));
         setIsLoggedIn(true);
-        confetti({ particleCount: 150, spread: 80, origin: { y: 0.6 } });
-        alert('সফলভাবে লগইন করা হয়েছে!');
+        confetti({ particleCount: 160, spread: 80, origin: { y: 0.6 } });
         return;
       }
 
+      let errorMsg = "লগইন সফল হয়নি। তথ্য যাচাই করে পুনরায় চেষ্টা করুন।";
       if (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials') {
-        errorMsg = "পাসওয়ার্ড ভুল হয়েছে। সঠিক পাসওয়ার্ড দিন।";
+        errorMsg = "পাসওয়ার্ড অথবা ইমেইল/মোবাইল নম্বর সঠিক নয়। সঠিক তথ্য দিয়ে চেষ্টা করুন অথবা নতুন একাউন্ট তৈরি করুন।";
       } else if (code === 'auth/user-not-found') {
-        errorMsg = "এই ইমেইলে কোনো অ্যাকাউন্ট পাওয়া যায়নি।";
+        errorMsg = "এই তথ্য দিয়ে কোনো অ্যাকাউন্ট পাওয়া যায়নি। অনুগ্রহ করে নতুন অ্যাকাউন্ট তৈরি করুন।";
       } else if (code === 'auth/email-already-in-use') {
-        errorMsg = "এই ইমেইলটি ইতিমধ্যে নিবন্ধিত রয়েছে। অন্য ইমেল ব্যবহার করুন অথবা সাইন ইন করুন।";
+        errorMsg = "এই ইমেইলটি ইতিমধ্যে নিবন্ধিত রয়েছে। দয়া করে লগইন করুন।";
       } else if (code === 'auth/weak-password') {
-        errorMsg = "পাসওয়ার্ডটি খুবই দুর্বল। শক্তিশালী পাসওয়ার্ড দিন।";
+        errorMsg = "পাসওয়ার্ডটি খুবই দুর্বল। অন্তত ৬ অক্ষরের পাসওয়ার্ড দিন।";
       } else if (code === 'auth/invalid-email') {
-        errorMsg = "সঠিক ইমেইল এড্রেস বা মোবাইল নম্বর দিন।";
-      } else {
-        errorMsg = "পাসওয়ার্ড ভুল হয়েছে অথবা এই ইমেইলে কোনো অ্যাকাউন্ট পাওয়া যায়নি। সঠিক তথ্য দিন।";
+        errorMsg = "সঠিক ইমেইল এড্রেস অথবা মোবাইল নম্বর লিখুন।";
       }
 
-      alert(errorMsg);
+      setAuthErrorText(errorMsg);
       setIsLoggedIn(false);
+    } finally {
+      setIsAuthLoading(false);
     }
   };
+
+
 
   // Handle Logout
   const handleSignOut = async () => {
@@ -756,9 +974,10 @@ export default function App() {
     }
     const depAmount = Number(depositAmountInput) || 500;
     const userId = firebaseUser ? firebaseUser.uid : 'local-user';
+    const uniqueDepId = `dep-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
     const depositRecord: DepositRequest = {
-      id: `dep-${Date.now()}`,
+      id: uniqueDepId,
       userId,
       userName: user.name,
       userMobile: depositSenderMobile,
@@ -771,15 +990,18 @@ export default function App() {
     };
 
     try {
-      await addDoc(collection(db, 'deposits'), depositRecord);
+      await setDoc(doc(db, 'deposits', uniqueDepId), depositRecord);
     } catch (err) {
       console.error("Error submitting deposit to Firestore:", err);
     }
 
-    setDeposits(prev => [depositRecord, ...prev]);
+    setDeposits(prev => {
+      const filtered = prev.filter(d => d.id !== uniqueDepId);
+      return [depositRecord, ...filtered];
+    });
 
     const newTx: Transaction = {
-      id: `tx-${Date.now()}`,
+      id: `tx-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
       type: 'Deposit',
       amount: depAmount,
       date: new Date().toLocaleDateString('en-GB') + ' • ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -807,39 +1029,51 @@ export default function App() {
       return;
     }
 
+    const targetBkash = withdrawBkashInput.trim() || user.linkedBkash;
+    if (!targetBkash || targetBkash.length < 11) {
+      alert('দয়া করে সঠিক ১১ ডিজিটের বিকাশ নম্বর দিন।');
+      return;
+    }
+
     const userId = firebaseUser ? firebaseUser.uid : 'local-user';
+    const uniqueWithId = `with-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const withdrawRecord: WithdrawalRequest = {
-      id: `with-${Date.now()}`,
+      id: uniqueWithId,
       userId,
       userName: user.name,
       amount: amountVal,
-      bkashNumber: user.linkedBkash,
+      bkashNumber: targetBkash,
       status: 'pending',
       createdAt: new Date().toISOString()
     };
 
     try {
-      await addDoc(collection(db, 'withdrawals'), withdrawRecord);
+      await setDoc(doc(db, 'withdrawals', uniqueWithId), withdrawRecord);
       if (firebaseUser) {
         await updateDoc(doc(db, 'users', firebaseUser.uid), {
           totalBalance: user.totalBalance - amountVal,
-          pendingBalance: (user.pendingBalance || 0) + amountVal
+          pendingBalance: (user.pendingBalance || 0) + amountVal,
+          linkedBkash: targetBkash
         });
       }
     } catch (err) {
       console.error("Error submitting withdrawal to Firestore:", err);
     }
 
-    setWithdrawals(prev => [withdrawRecord, ...prev]);
+    setWithdrawals(prev => {
+      const filtered = prev.filter(w => w.id !== uniqueWithId);
+      return [withdrawRecord, ...filtered];
+    });
 
     setUser(prev => ({
       ...prev,
       totalBalance: prev.totalBalance - amountVal,
-      pendingBalance: prev.pendingBalance + amountVal
+      pendingBalance: prev.pendingBalance + amountVal,
+      linkedBkash: targetBkash
     }));
 
     const newTx: Transaction = {
-      id: `tx-${Date.now()}`,
+      id: `tx-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`,
       type: 'Withdraw',
       amount: amountVal,
       date: new Date().toLocaleDateString('en-GB') + ' • ' + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -901,7 +1135,13 @@ export default function App() {
       const newIncome = user.incomeBalance + selectedJob.reward;
       const newTotal = user.totalBalance + selectedJob.reward;
       const newPending = user.pendingBalance + selectedJob.reward;
-      setUser(prev => ({ ...prev, incomeBalance: newIncome, totalBalance: newTotal, pendingBalance: newPending }));
+      const newXp = (user.xp || 45) + 15; // Gain 15 XP per completed task
+      setUser(prev => ({ ...prev, incomeBalance: newIncome, totalBalance: newTotal, pendingBalance: newPending, xp: newXp }));
+      if (firebaseUser) {
+        try {
+          await updateDoc(doc(db, 'users', firebaseUser.uid), { xp: newXp });
+        } catch(e) {}
+      }
 
       const earnedTx: Transaction = {
         id: `tx-${Date.now()}`,
@@ -922,32 +1162,72 @@ export default function App() {
     }
   };
 
-  // Handle Post New Job Submit
+  // Handle Post New Job Submit with 2% Company Fee
   const handlePostJobSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    const rewardVal = Number(newJobReward);
+    const workersVal = Number(newJobWorkers);
+    const totalCost = rewardVal * workersVal;
+    const companyFee = totalCost * 0.02; // 2% Company Fee
+    const finalDebit = totalCost + companyFee;
+
+    if (user.totalBalance < finalDebit) {
+      alert(`আপনার ব্যালেন্স যথেষ্ট নয়। এই কাজের জন্য মোট খরচ: ৳${totalCost.toFixed(2)} + কোম্পানি ফি (২%): ৳${companyFee.toFixed(2)} = ৳${finalDebit.toFixed(2)}। দয়া করে ডিপোজিট করুন।`);
+      return;
+    }
+
+    const uniqueJobId = `job-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
     const newJob: Job = {
-      id: `job-${Date.now()}`,
+      id: uniqueJobId,
       title: newJobTitle,
       category: newJobCategory,
-      reward: Number(newJobReward),
+      reward: rewardVal,
       completed: 0,
-      total: Number(newJobWorkers),
-      employer: user.name,
+      total: workersVal,
+      employer: user.username ? `@${user.username}` : user.name,
+      employerId: firebaseUser?.uid,
       requirements: newJobReqs.split(',').map(s => s.trim()).filter(Boolean),
-      proofInstruction: 'Submit required screenshot and proof details.',
-      status: 'active'
+      proofInstruction: `Please submit ${newJobType} as proof for this task.`,
+      status: 'active',
+      thumbnail: newJobThumbnail || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&auto=format&fit=crop&q=60',
+      taskType: newJobType,
+      targetLink: newJobLink,
+      durationMinutes: newJobDuration,
+      isCompanyTask: false // User jobs are not company tasks
     };
 
     try {
-      await setDoc(doc(db, 'jobs', newJob.id), newJob);
-      setJobs(prev => [newJob, ...prev]);
-      setShowPostJobModal(false);
+      // 1. Save to Firestore
+      await setDoc(doc(db, 'jobs', uniqueJobId), newJob);
+      
+      // 2. Deduct balance from user
+      if (firebaseUser) {
+        const newBal = user.totalBalance - finalDebit;
+        await updateDoc(doc(db, 'users', firebaseUser.uid), {
+          totalBalance: newBal
+        });
+
+        // 3. Update Company Revenue
+        const nextRev = (platformSettings.companyRevenue || 0) + companyFee;
+        await updateDoc(doc(db, 'platform_settings', 'general'), {
+          companyRevenue: nextRev
+        });
+
+        setPlatformSettings(prev => ({ ...prev, companyRevenue: nextRev }));
+        setUser(prev => ({ ...prev, totalBalance: newBal }));
+      }
+
       setNewJobTitle('');
       setNewJobReqs('');
-      alert('Micro job posted successfully to Live Firebase!');
-    } catch (e) {
-      console.error(e);
-      alert('Error posting job.');
+      setNewJobThumbnail('');
+      setNewJobLink('');
+      setShowPostJobModal(false);
+      
+      confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+      alert(`কাজটি সফলভাবে পোস্ট করা হয়েছে! মোট খরচ: ৳${totalCost.toFixed(2)} + ২% কোম্পানি ফি: ৳${companyFee.toFixed(2)}। আপনার ব্যালেন্স থেকে ৳${finalDebit.toFixed(2)} কাটা হয়েছে।`);
+    } catch (err) {
+      console.error(err);
+      alert('টাস্ক পোস্ট করতে সমস্যা হয়েছে। দয়া করে আবার চেষ্টা করুন।');
     }
   };
 
@@ -983,174 +1263,360 @@ export default function App() {
     job.employer.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // If not logged in, show 3D Login / Create Account screen matching user reference image
+  // If not logged in, show Upwork / Fiverr Next-Level 3D Login / Create Account screen
   if (!isLoggedIn) {
-    return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-100 via-sky-50 to-emerald-100 flex items-center justify-center p-4 font-sans animate-in fade-in duration-500">
-        <div className="bg-white/95 backdrop-blur-2xl rounded-3xl max-w-md w-full p-8 shadow-2xl border border-blue-200 relative overflow-hidden transform transition-all">
-          <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-500 animate-pulse"></div>
+    // Dynamic password strength scoring
+    const hasMinLen = authPassword.length >= 6;
+    const hasCase = /[A-Z]/.test(authPassword) && /[a-z]/.test(authPassword);
+    const hasNumber = /[0-9]/.test(authPassword);
+    const hasSpecial = /[^A-Za-z0-9]/.test(authPassword);
+    const strengthScore = (hasMinLen ? 1 : 0) + (hasCase ? 1 : 0) + (hasNumber ? 1 : 0) + (hasSpecial ? 1 : 0);
+    const passMatch = authConfirmPassword ? authPassword === authConfirmPassword : null;
 
-          <div className="text-center mb-6">
-            <div className="w-20 h-20 rounded-3xl bg-gradient-to-tr from-blue-600 to-emerald-500 p-1.5 shadow-2xl mx-auto mb-3 flex items-center justify-center overflow-hidden transform hover:scale-105 transition-transform duration-300">
-              <img 
-                src="/assets/aistudio/file_000000006d0081faaf05d5de78209f5b_a67c025c.png" 
-                alt="WORK GROVE 3D Logo" 
-                className="w-full h-full object-contain rounded-2xl bg-white"
-              />
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-950 via-indigo-950 to-slate-900 flex items-center justify-center p-4 font-sans relative overflow-hidden">
+        
+        {/* Floating 3D Ambient Glowing Neon Orbs */}
+        <div className="absolute top-1/4 -left-20 w-80 h-80 bg-blue-600/25 rounded-full blur-3xl pointer-events-none animate-float-slow"></div>
+        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-emerald-500/20 rounded-full blur-3xl pointer-events-none animate-float"></div>
+        <div className="absolute top-10 right-10 w-64 h-64 bg-violet-600/20 rounded-full blur-3xl pointer-events-none animate-pulse-glow"></div>
+
+        {/* 3D Glassmorphic Master Card */}
+        <div className="relative z-10 w-full max-w-md bg-slate-900/90 backdrop-blur-3xl rounded-[32px] p-6 sm:p-8 shadow-[0_25px_60px_-15px_rgba(0,0,0,0.8)] border border-slate-700/60 overflow-hidden transform transition-all duration-500 hover:border-blue-500/50">
+          
+          {/* Top animated neon line */}
+          <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 animate-pulse"></div>
+
+          {/* Upwork/Fiverr Styled Header */}
+          <div className="text-center mb-6 relative">
+            <div className="relative w-20 h-20 mx-auto mb-3 flex items-center justify-center">
+              {/* Rotating outer holographic neon ring */}
+              <div className="absolute inset-0 rounded-full border-2 border-dashed border-blue-400/50 animate-rotate-slow"></div>
+              <div className="absolute -inset-1 rounded-full bg-gradient-to-tr from-blue-500 to-emerald-400 opacity-30 blur-md animate-pulse"></div>
+              
+              {/* Inner 3D emblem */}
+              <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-emerald-500 p-1 shadow-2xl shadow-blue-500/40 transform hover:scale-110 hover:rotate-6 transition-all duration-300">
+                <img 
+                  src="/assets/aistudio/file_000000006d0081faaf05d5de78209f5b_a67c025c.png" 
+                  alt="WORK GROVE Emblem" 
+                  className="w-full h-full object-contain rounded-xl bg-white p-1"
+                />
+              </div>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-blue-700 via-indigo-600 to-emerald-600 bg-clip-text text-transparent tracking-wide">
+
+            <h1 className="text-2xl sm:text-3xl font-black bg-gradient-to-r from-blue-400 via-indigo-300 to-emerald-400 bg-clip-text text-transparent tracking-wide drop-shadow-md">
               WORK GROVE
             </h1>
-            <p className="text-xs text-slate-500 font-bold tracking-widest mt-1 uppercase">Work Smart • Grow Together</p>
+            <div className="flex items-center justify-center gap-2 mt-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-blue-500/10 border border-blue-500/30 text-[10px] font-extrabold text-blue-300 uppercase tracking-wider">
+                <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                Verified Platform
+              </span>
+              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-[10px] font-extrabold text-emerald-300">
+                <Users className="w-3 h-3 text-emerald-400" />
+                ৫০,০০০+ একটিভ মেম্বার
+              </span>
+            </div>
           </div>
 
-          <div className="flex rounded-xl bg-blue-100/70 p-1 mb-6 border border-blue-200 shadow-inner">
+          {/* 3D Segmented Mode Switcher */}
+          <div className="grid grid-cols-2 p-1.5 rounded-2xl bg-slate-950/80 border border-slate-800 shadow-inner mb-6">
             <button 
-              onClick={() => setAuthView('login')}
-              className={`flex-1 py-2.5 text-xs font-black rounded-lg transition-all ${authView === 'login' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md' : 'text-blue-700 hover:bg-blue-200/50'}`}
+              type="button"
+              onClick={() => { setAuthView('login'); setAuthErrorText(''); }}
+              className={`py-3 text-xs font-black rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
+                authView === 'login' 
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-lg shadow-blue-600/30 transform scale-[1.02]' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              Sign In
+              <Lock className="w-3.5 h-3.5" />
+              <span>লগইন (Sign In)</span>
             </button>
             <button 
-              onClick={() => setAuthView('signup')}
-              className={`flex-1 py-2.5 text-xs font-black rounded-lg transition-all ${authView === 'signup' ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md' : 'text-blue-700 hover:bg-blue-200/50'}`}
+              type="button"
+              onClick={() => { setAuthView('signup'); setAuthErrorText(''); }}
+              className={`py-3 text-xs font-black rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 ${
+                authView === 'signup' 
+                  ? 'bg-gradient-to-r from-indigo-600 to-emerald-600 text-white shadow-lg shadow-emerald-600/30 transform scale-[1.02]' 
+                  : 'text-slate-400 hover:text-white'
+              }`}
             >
-              Create Account
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>নতুন একাউন্ট (Sign Up)</span>
             </button>
           </div>
 
+          {/* Form */}
           <form onSubmit={handleAuthSubmit} className="space-y-4">
             {authView === 'signup' ? (
               <>
+                {/* 1. Full Display Name (Free text) */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Full Name</label>
+                  <label className="block text-[11px] font-black text-slate-300 uppercase tracking-wider mb-1.5">
+                    আপনার নাম (Full Name - যেকোনো নাম হতে পারে)
+                  </label>
                   <div className="relative">
-                    <User className="absolute left-3.5 top-3 w-4 h-4 text-blue-600" />
+                    <div className="absolute left-3.5 top-3.5 w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <User className="w-3.5 h-3.5" />
+                    </div>
                     <input 
                       type="text" 
                       required
-                      placeholder="Enter your full name"
+                      placeholder="আপনার পূর্ণ নাম লিখুন (যেমন: আরিফ হোসেন)..."
                       value={authFullName}
                       onChange={(e) => setAuthFullName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800"
+                      className="w-full pl-12 pr-4 py-3 bg-slate-950/70 border border-slate-700/80 rounded-2xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all shadow-inner"
                     />
                   </div>
                 </div>
 
+                {/* 2. Unique Username (One-of-a-kind) */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Bangladeshi Mobile Number</label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-black text-slate-300 uppercase tracking-wider flex items-center gap-1">
+                      <span>ইউজারনেম (Unique Username)</span>
+                      <span className="text-[10px] text-amber-400 font-bold">*সবার চেয়ে আলাদা</span>
+                    </label>
+                    {/* Live status badge */}
+                    {usernameStatus === 'checking' && (
+                      <span className="text-[10px] text-blue-400 font-bold flex items-center gap-1">
+                        <Loader2 className="w-3 h-3 animate-spin" /> যাচাই হচ্ছে...
+                      </span>
+                    )}
+                    {usernameStatus === 'available' && (
+                      <span className="text-[10px] text-emerald-400 font-bold flex items-center gap-1">
+                        <Check className="w-3 h-3" /> উপলব্ধ আছে!
+                      </span>
+                    )}
+                    {usernameStatus === 'taken' && (
+                      <span className="text-[10px] text-red-400 font-bold flex items-center gap-1">
+                        <X className="w-3 h-3" /> ইতিমধ্যে নেওয়া হয়েছে!
+                      </span>
+                    )}
+                    {usernameStatus === 'invalid' && (
+                      <span className="text-[10px] text-slate-400 font-medium">কমপক্ষে ৩ অক্ষর</span>
+                    )}
+                  </div>
                   <div className="relative">
-                    <Smartphone className="absolute left-3.5 top-3 w-4 h-4 text-blue-600" />
+                    <div className="absolute left-3.5 top-3.5 w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-mono font-bold text-xs">
+                      @
+                    </div>
+                    <input 
+                      type="text" 
+                      required
+                      placeholder="যেমন: shakib_99 (ইংরেজি ছোট অক্ষরের ইউনিক নাম)"
+                      value={authUsername}
+                      onChange={(e) => setAuthUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                      className={`w-full pl-12 pr-4 py-3 bg-slate-950/70 border rounded-2xl text-xs font-mono font-bold text-white placeholder-slate-500 focus:outline-none transition-all shadow-inner ${
+                        usernameStatus === 'available' ? 'border-emerald-500/80 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/30' :
+                        usernameStatus === 'taken' ? 'border-red-500/80 focus:border-red-400 focus:ring-2 focus:ring-red-500/30' :
+                        'border-slate-700/80 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* 3. Mobile Number */}
+                <div>
+                  <label className="block text-[11px] font-black text-slate-300 uppercase tracking-wider mb-1.5">
+                    মোবাইল নম্বর (Mobile Number)
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-3.5 w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center">
+                      <Smartphone className="w-3.5 h-3.5" />
+                    </div>
                     <input 
                       type="tel" 
                       required
                       placeholder="01712345678"
                       value={authMobileNumber}
                       onChange={(e) => setAuthMobileNumber(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800"
+                      className="w-full pl-12 pr-4 py-3 bg-slate-950/70 border border-slate-700/80 rounded-2xl text-xs font-mono font-bold text-white placeholder-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/30 transition-all shadow-inner"
                     />
                   </div>
                 </div>
 
+                {/* 4. Email */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Email Address</label>
+                  <label className="block text-[11px] font-black text-slate-300 uppercase tracking-wider mb-1.5">
+                    ইমেইল এড্রেস (Email Address)
+                  </label>
                   <div className="relative">
-                    <Mail className="absolute left-3.5 top-3 w-4 h-4 text-blue-600" />
+                    <div className="absolute left-3.5 top-3.5 w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                      <Mail className="w-3.5 h-3.5" />
+                    </div>
                     <input 
                       type="email" 
                       required
                       placeholder="name@example.com"
                       value={authEmailOrMobile}
                       onChange={(e) => setAuthEmailOrMobile(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800"
+                      className="w-full pl-12 pr-4 py-3 bg-slate-950/70 border border-slate-700/80 rounded-2xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/30 transition-all shadow-inner"
                     />
                   </div>
                 </div>
 
+                {/* 5. Password with Live Strength Visualizer */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Referral Code (Optional)</label>
-                  <div className="relative">
-                    <Users className="absolute left-3.5 top-3 w-4 h-4 text-emerald-600" />
-                    <input 
-                      type="text" 
-                      placeholder="e.g. WG4821 (Earns referrer ৳10 bonus on face verify)"
-                      value={authReferralInput}
-                      onChange={(e) => setAuthReferralInput(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-emerald-50/40 border border-emerald-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500 font-semibold text-slate-800 uppercase"
-                    />
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-black text-slate-300 uppercase tracking-wider">
+                      পাসওয়ার্ড (Password)
+                    </label>
+                    {authPassword && (
+                      <span className={`text-[10px] font-black uppercase ${
+                        strengthScore === 4 ? 'text-emerald-400' :
+                        strengthScore === 3 ? 'text-yellow-400' :
+                        strengthScore === 2 ? 'text-orange-400' : 'text-red-400'
+                      }`}>
+                        {strengthScore === 4 ? '★ অত্যন্ত শক্তিশালী (Strong)' :
+                         strengthScore === 3 ? 'ভালো (Good)' :
+                         strengthScore === 2 ? 'মাঝারি (Fair)' : 'দুর্বল (Weak)'}
+                      </span>
+                    )}
                   </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Password</label>
                   <div className="relative">
-                    <Lock className="absolute left-3.5 top-3 w-4 h-4 text-blue-600" />
+                    <div className="absolute left-3.5 top-3.5 w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <Lock className="w-3.5 h-3.5" />
+                    </div>
                     <input 
                       type={showPassword ? 'text' : 'password'}
                       required
-                      placeholder="Create a strong password"
+                      placeholder="গোপন পাসওয়ার্ড দিন..."
                       value={authPassword}
                       onChange={(e) => setAuthPassword(e.target.value)}
-                      className="w-full pl-10 pr-10 py-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800"
+                      className="w-full pl-12 pr-11 py-3 bg-slate-950/70 border border-slate-700/80 rounded-2xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all shadow-inner"
                     />
                     <button 
                       type="button" 
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-3 text-slate-400 hover:text-blue-600"
+                      className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white transition-colors"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
+
+                  {/* 4-Segment Animated Strength Meter */}
+                  {authPassword && (
+                    <div className="space-y-2 mt-2">
+                      <div className="grid grid-cols-4 gap-1.5">
+                        <div className={`h-1.5 rounded-full transition-all duration-300 ${strengthScore >= 1 ? 'bg-red-500' : 'bg-slate-800'}`}></div>
+                        <div className={`h-1.5 rounded-full transition-all duration-300 ${strengthScore >= 2 ? 'bg-orange-500' : 'bg-slate-800'}`}></div>
+                        <div className={`h-1.5 rounded-full transition-all duration-300 ${strengthScore >= 3 ? 'bg-yellow-400' : 'bg-slate-800'}`}></div>
+                        <div className={`h-1.5 rounded-full transition-all duration-300 ${strengthScore >= 4 ? 'bg-emerald-400' : 'bg-slate-800'}`}></div>
+                      </div>
+
+                      {/* Criteria Checklist */}
+                      <div className="grid grid-cols-2 gap-1 text-[10px] text-slate-400 font-medium pt-1">
+                        <span className={`flex items-center gap-1 ${hasMinLen ? 'text-emerald-400 font-bold' : ''}`}>
+                          {hasMinLen ? '✓' : '○'} কমপক্ষে ৬ অক্ষর
+                        </span>
+                        <span className={`flex items-center gap-1 ${hasCase ? 'text-emerald-400 font-bold' : ''}`}>
+                          {hasCase ? '✓' : '○'} বড় ও ছোট হাতের অক্ষর
+                        </span>
+                        <span className={`flex items-center gap-1 ${hasNumber ? 'text-emerald-400 font-bold' : ''}`}>
+                          {hasNumber ? '✓' : '○'} সংখ্যা (0-9)
+                        </span>
+                        <span className={`flex items-center gap-1 ${hasSpecial ? 'text-emerald-400 font-bold' : ''}`}>
+                          {hasSpecial ? '✓' : '○'} স্পেশাল চিহ্ন (@, #, $)
+                        </span>
+                      </div>
+                    </div>
+                  )}
                 </div>
 
+                {/* 6. Confirm Password */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Confirm Password</label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-[11px] font-black text-slate-300 uppercase tracking-wider">
+                      কনফার্ম পাসওয়ার্ড (Confirm Password)
+                    </label>
+                    {passMatch !== null && (
+                      <span className={`text-[10px] font-bold ${passMatch ? 'text-emerald-400' : 'text-red-400'}`}>
+                        {passMatch ? '✓ পাসওয়ার্ড মিলেছে' : '✗ মিলছে না'}
+                      </span>
+                    )}
+                  </div>
                   <div className="relative">
-                    <Lock className="absolute left-3.5 top-3 w-4 h-4 text-blue-600" />
+                    <div className="absolute left-3.5 top-3.5 w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <Lock className="w-3.5 h-3.5" />
+                    </div>
                     <input 
                       type={showPassword ? 'text' : 'password'}
                       required
-                      placeholder="Re-enter your password"
+                      placeholder="পাসওয়ার্ডটি আবার লিখুন..."
                       value={authConfirmPassword}
                       onChange={(e) => setAuthConfirmPassword(e.target.value)}
-                      className="w-full pl-10 pr-10 py-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800"
+                      className={`w-full pl-12 pr-4 py-3 bg-slate-950/70 border rounded-2xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none transition-all shadow-inner ${
+                        passMatch === true ? 'border-emerald-500/80 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/30' :
+                        passMatch === false ? 'border-red-500/80 focus:border-red-400 focus:ring-2 focus:ring-red-500/30' :
+                        'border-slate-700/80 focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30'
+                      }`}
+                    />
+                  </div>
+                </div>
+
+                {/* 7. Referral Code (Optional) */}
+                <div>
+                  <label className="block text-[11px] font-black text-slate-300 uppercase tracking-wider mb-1.5">
+                    রেফারেল কোড (ঐচ্ছিক / Optional)
+                  </label>
+                  <div className="relative">
+                    <div className="absolute left-3.5 top-3.5 w-6 h-6 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center">
+                      <Users className="w-3.5 h-3.5" />
+                    </div>
+                    <input 
+                      type="text" 
+                      placeholder="যেমন: WG4821"
+                      value={authReferralInput}
+                      onChange={(e) => setAuthReferralInput(e.target.value)}
+                      className="w-full pl-12 pr-4 py-3 bg-slate-950/70 border border-slate-700/80 rounded-2xl text-xs font-mono font-bold text-emerald-400 uppercase placeholder-slate-500 focus:outline-none focus:border-purple-400 focus:ring-2 focus:ring-purple-500/30 transition-all shadow-inner"
                     />
                   </div>
                 </div>
               </>
             ) : (
               <>
+                {/* LOGIN FIELDS */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Gmail or Mobile Number</label>
+                  <label className="block text-[11px] font-black text-slate-300 uppercase tracking-wider mb-1.5">
+                    ইমেইল, ইউজারনেম (@username) অথবা মোবাইল
+                  </label>
                   <div className="relative">
-                    <Mail className="absolute left-3.5 top-3 w-4 h-4 text-blue-600" />
+                    <div className="absolute left-3.5 top-3.5 w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 flex items-center justify-center">
+                      <User className="w-3.5 h-3.5" />
+                    </div>
                     <input 
                       type="text" 
                       required
-                      placeholder="Enter your Gmail or mobile number"
+                      placeholder="আপনার @username, ইমেইল বা মোবাইল লিখুন..."
                       value={authEmailOrMobile}
                       onChange={(e) => setAuthEmailOrMobile(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800"
+                      className="w-full pl-12 pr-4 py-3.5 bg-slate-950/70 border border-slate-700/80 rounded-2xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all shadow-inner"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1">Password</label>
+                  <label className="block text-[11px] font-black text-slate-300 uppercase tracking-wider mb-1.5">
+                    গোপন পাসওয়ার্ড (Password)
+                  </label>
                   <div className="relative">
-                    <Lock className="absolute left-3.5 top-3 w-4 h-4 text-blue-600" />
+                    <div className="absolute left-3.5 top-3.5 w-6 h-6 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                      <Lock className="w-3.5 h-3.5" />
+                    </div>
                     <input 
                       type={showPassword ? 'text' : 'password'}
                       required
-                      placeholder="Enter your password"
+                      placeholder="আপনার গোপন পাসওয়ার্ড লিখুন"
                       value={authPassword}
                       onChange={(e) => setAuthPassword(e.target.value)}
-                      className="w-full pl-10 pr-10 py-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 font-semibold text-slate-800"
+                      className="w-full pl-12 pr-11 py-3.5 bg-slate-950/70 border border-slate-700/80 rounded-2xl text-xs font-bold text-white placeholder-slate-500 focus:outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-500/30 transition-all shadow-inner"
                     />
                     <button 
                       type="button" 
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-3 text-slate-400 hover:text-blue-600"
+                      className="absolute right-3.5 top-3.5 text-slate-400 hover:text-white transition-colors"
                     >
                       {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
@@ -1159,14 +1625,76 @@ export default function App() {
               </>
             )}
 
+            {/* Inline 3D Error Notice Banner */}
+            {authErrorText && (
+              <div className="p-3.5 bg-red-950/80 border border-red-500/50 rounded-2xl flex items-start gap-2.5 text-xs text-red-200 animate-in fade-in slide-in-from-top-2 duration-300 shadow-lg shadow-red-950/50">
+                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="font-bold leading-relaxed">{authErrorText}</p>
+                  {authView === 'login' && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAuthView('signup');
+                        setAuthErrorText('');
+                      }}
+                      className="mt-1.5 text-[11px] font-black text-amber-300 hover:text-amber-200 underline flex items-center gap-1 transition-colors"
+                    >
+                      <span>অ্যাকাউন্ট নেই? নতুন একাউন্ট তৈরি করতে এখানে চাপুন</span>
+                      <ArrowRight className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Primary 3D Submit Button */}
             <button 
               type="submit"
-              className="w-full py-3.5 bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 hover:from-blue-700 hover:to-emerald-700 text-white font-black rounded-2xl shadow-xl shadow-blue-500/30 flex items-center justify-center gap-2 transition-all transform hover:-translate-y-0.5 active:scale-95"
+              disabled={isAuthLoading || (authView === 'signup' && usernameStatus === 'taken')}
+              className={`w-full py-4 bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-500 hover:from-blue-500 hover:to-emerald-400 text-white font-black rounded-2xl shadow-[0_10px_25px_rgba(37,99,235,0.4)] flex items-center justify-center gap-2 transition-all transform hover:-translate-y-1 active:translate-y-0 text-sm tracking-wide group ${isAuthLoading ? 'opacity-70 cursor-not-allowed' : ''}`}
             >
-              <span>{authView === 'signup' ? 'Create Account' : 'LOGIN'}</span>
-              <ArrowRight className="w-4 h-4" />
+              {isAuthLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin text-white" />
+                  <span>যাচাই করা হচ্ছে...</span>
+                </>
+              ) : (
+                <>
+                  <span>{authView === 'signup' ? 'একাউন্ট তৈরি করুন (Create Account)' : 'লগইন করুন (SIGN IN)'}</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </>
+              )}
             </button>
+
+
           </form>
+
+          {/* Social / Official Channel Buttons at Bottom */}
+          <div className="mt-6 pt-5 border-t border-slate-800 text-center">
+            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mb-2.5">
+              WORK GROVE OFFICIAL CHANNELS
+            </p>
+            <div className="grid grid-cols-5 gap-2">
+              {[
+                { name: 'FB', color: 'bg-blue-600 text-white', icon: FacebookSvg, link: 'https://facebook.com' },
+                { name: 'TG', color: 'bg-sky-500 text-white', icon: TelegramSvg, link: 'https://t.me/work_grove_official' },
+                { name: 'YT', color: 'bg-red-600 text-white', icon: YoutubeSvg, link: 'https://youtube.com' },
+                { name: 'TT', color: 'bg-slate-800 text-white', icon: TiktokSvg, link: 'https://tiktok.com' },
+                { name: 'WA', color: 'bg-emerald-600 text-white', icon: WhatsappSvg, link: 'https://whatsapp.com/channel/0029Vb9UVQO4inopUJ81G83D' },
+              ].map((c, i) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => window.open(c.link, '_blank')}
+                  className={`p-2.5 rounded-xl ${c.color} flex items-center justify-center shadow-md hover:scale-110 active:scale-95 transition-transform`}
+                >
+                  <c.icon />
+                </button>
+              ))}
+            </div>
+          </div>
+
         </div>
       </div>
     );
@@ -1419,49 +1947,63 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-white/90 backdrop-blur-xl border border-blue-100 rounded-3xl p-4 shadow-xl space-y-3">
-              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide flex items-center gap-2">
-                <div className="w-2 h-4 bg-blue-600 rounded-full"></div>
-                {t(language, 'smallWork')}
-              </h3>
+            {/* 3. SMALL WORK (সহজ আয় / Small Work matching user screenshot) */}
+            <div className="bg-white/95 backdrop-blur-xl border border-blue-100 rounded-3xl p-4 sm:p-5 shadow-xl space-y-3.5">
+              <div className="flex items-center justify-between border-b border-blue-50 pb-2.5">
+                <h3 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                  <div className="w-2.5 h-4 bg-gradient-to-b from-blue-600 to-indigo-600 rounded-full"></div>
+                  <span>{t(language, 'smallWork')}</span>
+                </h3>
+                <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
+                  Easy Earning
+                </span>
+              </div>
 
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-4 gap-2 sm:gap-3">
                 {[
-                  { name: t(language, 'microJob'), icon: Briefcase, color: 'bg-blue-600 shadow-blue-500/40', action: () => setCurrentTab('microjob') },
-                  { name: t(language, 'microJobPost'), icon: PlusCircle, color: 'bg-indigo-600 shadow-indigo-500/40', action: () => setShowPostJobModal(true) },
-                  { name: t(language, 'mobileRecharge'), icon: Smartphone, color: 'bg-emerald-600 shadow-emerald-500/40', action: () => setCurrentTab('wallet') },
-                  { name: t(language, 'socialMediaTask'), icon: Share2, color: 'bg-violet-600 shadow-violet-500/40', action: () => setCurrentTab('microjob') },
-                  { name: t(language, 'giftCode'), icon: Gift, color: 'bg-pink-600 shadow-pink-500/40', action: () => setShowGiftModal(true) },
+                  { name: t(language, 'microJob'), icon: Briefcase, bg: 'bg-blue-50/80 border-blue-200 text-blue-700', iconBg: 'bg-blue-600 text-white', action: () => setCurrentTab('microjob') },
+                  { name: t(language, 'microJobPost'), icon: PlusCircle, bg: 'bg-indigo-50/80 border-indigo-200 text-indigo-700', iconBg: 'bg-indigo-600 text-white', action: () => setShowPostJobModal(true) },
+                  { name: t(language, 'mobileRecharge'), icon: Smartphone, bg: 'bg-emerald-50/80 border-emerald-200 text-emerald-700', iconBg: 'bg-emerald-600 text-white', action: () => setCurrentTab('wallet') },
+                  { name: t(language, 'socialMediaTask'), icon: Share2, bg: 'bg-violet-50/80 border-violet-200 text-violet-700', iconBg: 'bg-violet-600 text-white', action: () => setCurrentTab('microjob') },
+                  { name: t(language, 'giftCode'), icon: Gift, bg: 'bg-pink-50/80 border-pink-200 text-pink-700', iconBg: 'bg-pink-600 text-white', action: () => setShowGiftModal(true) },
+                  { name: 'অ্যাডস্ ভিউ', icon: Sparkles, bg: 'bg-amber-50/80 border-amber-200 text-amber-800', iconBg: 'bg-amber-500 text-white', action: () => alert('অ্যাডস্ ভিউ টাস্ক শীঘ্রই আসছে!') },
+                  { name: 'কুইজ জব', icon: Award, bg: 'bg-teal-50/80 border-teal-200 text-teal-800', iconBg: 'bg-teal-600 text-white', action: () => setCurrentTab('microjob') },
+                  { name: 'টাইপিং জব', icon: FileText, bg: 'bg-sky-50/80 border-sky-200 text-sky-800', iconBg: 'bg-sky-600 text-white', action: () => setCurrentTab('microjob') },
                 ].map((item, idx) => (
                   <button 
                     key={idx}
                     onClick={item.action}
-                    className="flex flex-col items-center justify-center p-3.5 bg-gradient-to-b from-blue-50/60 to-white hover:from-blue-100/80 hover:to-blue-50 border border-blue-100 rounded-2xl transition-all transform hover:-translate-y-1 hover:shadow-lg group"
+                    className={`flex flex-col items-center justify-center p-3 rounded-2xl border ${item.bg} hover:shadow-lg transition-all transform hover:-translate-y-1 active:scale-95 group text-center`}
                   >
-                    <div className={`w-12 h-12 rounded-2xl ${item.color} text-white flex items-center justify-center shadow-lg mb-2 group-hover:scale-110 transition-transform`}>
-                      <item.icon className="w-6 h-6" />
+                    <div className={`w-10 h-10 sm:w-11 sm:h-11 rounded-2xl ${item.iconBg} flex items-center justify-center shadow-md mb-2 group-hover:scale-110 transition-transform`}>
+                      <item.icon className="w-5 h-5" />
                     </div>
-                    <span className="text-xs font-bold text-slate-700 text-center leading-tight">{item.name}</span>
+                    <span className="text-[11px] font-black text-slate-800 leading-tight tracking-tight">{item.name}</span>
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Special Work on Home */}
-            <div className="bg-white/90 backdrop-blur-xl border border-emerald-100 rounded-3xl p-4 shadow-xl space-y-3">
-              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide flex items-center gap-2">
-                <div className="w-2 h-4 bg-emerald-600 rounded-full"></div>
-                {t(language, 'specialWork')}
-              </h3>
+            {/* 4. SPECIAL WORK (বিশেষ আয় / Special Work matching user screenshot) */}
+            <div className="bg-white/95 backdrop-blur-xl border border-purple-100 rounded-3xl p-4 sm:p-5 shadow-xl space-y-3.5">
+              <div className="flex items-center justify-between border-b border-purple-50 pb-2.5">
+                <h3 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wide flex items-center gap-2">
+                  <div className="w-2.5 h-4 bg-gradient-to-b from-purple-600 to-pink-600 rounded-full"></div>
+                  <span>{t(language, 'specialWork')}</span>
+                </h3>
+                <span className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200">
+                  High Payout
+                </span>
+              </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 sm:gap-3">
                 {[
-                  { name: t(language, 'gmailSell'), icon: GmailSvg, color: 'bg-red-500 text-white' },
-                  { name: t(language, 'instagramSell'), icon: InstagramSvg, color: 'bg-pink-600 text-white' },
-                  { name: t(language, 'facebookSell'), icon: FacebookSvg, color: 'bg-blue-600 text-white' },
-                  { name: t(language, 'telegramSell'), icon: TelegramSvg, color: 'bg-sky-500 text-white' },
-                  { name: t(language, 'whatsappSell'), icon: WhatsappSvg, color: 'bg-emerald-500 text-white' },
-                  { name: t(language, 'tiktokSell'), icon: TiktokSvg, color: 'bg-slate-900 text-white' },
+                  { name: t(language, 'gmailSell'), icon: GmailSvg, color: 'bg-red-50 text-red-700 border-red-200', iconBg: 'bg-red-500 text-white' },
+                  { name: t(language, 'instagramSell'), icon: InstagramSvg, color: 'bg-pink-50 text-pink-700 border-pink-200', iconBg: 'bg-pink-600 text-white' },
+                  { name: t(language, 'facebookSell'), icon: FacebookSvg, color: 'bg-blue-50 text-blue-700 border-blue-200', iconBg: 'bg-blue-600 text-white' },
+                  { name: t(language, 'telegramSell'), icon: TelegramSvg, color: 'bg-sky-50 text-sky-700 border-sky-200', iconBg: 'bg-sky-500 text-white' },
+                  { name: t(language, 'whatsappSell'), icon: WhatsappSvg, color: 'bg-emerald-50 text-emerald-700 border-emerald-200', iconBg: 'bg-emerald-600 text-white' },
+                  { name: t(language, 'tiktokSell'), icon: TiktokSvg, color: 'bg-slate-100 text-slate-800 border-slate-200', iconBg: 'bg-slate-900 text-white' },
                 ].map((item, idx) => (
                   <button 
                     key={idx}
@@ -1480,9 +2022,9 @@ export default function App() {
                       };
                       setSelectedJob(spJob);
                     }}
-                    className="flex flex-col items-center justify-center p-3.5 bg-gradient-to-b from-emerald-50/70 to-white hover:from-emerald-100 hover:to-emerald-50 border border-emerald-300 rounded-2xl transition-all transform hover:-translate-y-1 hover:shadow-lg group text-center"
+                    className={`flex flex-col items-center justify-center p-3.5 rounded-2xl border ${item.color} shadow-sm hover:shadow-lg transition-all transform hover:-translate-y-1 active:scale-95 group text-center`}
                   >
-                    <div className={`w-12 h-12 rounded-2xl ${item.color} flex items-center justify-center shadow-md mb-2 group-hover:scale-110 transition-transform`}>
+                    <div className={`w-11 h-11 rounded-2xl ${item.iconBg} flex items-center justify-center shadow-md mb-2 group-hover:scale-110 transition-transform`}>
                       <item.icon />
                     </div>
                     <span className="text-xs font-black text-slate-900 leading-tight">{item.name}</span>
@@ -1534,38 +2076,83 @@ export default function App() {
                   <p className="text-sm font-bold text-slate-700">No jobs found matching your search.</p>
                 </div>
               ) : (
-                filteredJobs.map(job => (
-                  <div key={job.id} className="bg-white/90 backdrop-blur-xl border border-blue-100 rounded-3xl p-4 shadow-xl hover:shadow-2xl transition-all transform hover:-translate-y-0.5">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div>
-                        <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-black rounded-lg">
+                filteredJobs.map((job, idx) => (
+                  <div key={`${job.id}-${idx}`} className="bg-white/95 backdrop-blur-2xl border border-slate-200 rounded-[32px] overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.04)] hover:shadow-[0_20px_40px_rgba(0,0,0,0.1)] transition-all duration-500 transform hover:-translate-y-1 group">
+                    {/* Job Thumbnail with Overlays */}
+                    <div className="relative h-44 overflow-hidden">
+                      <img 
+                        src={job.thumbnail || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=500&auto=format&fit=crop&q=60'} 
+                        alt={job.title}
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
+                      
+                      {/* Category & Type Badges */}
+                      <div className="absolute top-4 left-4 flex gap-2">
+                        <span className="px-3 py-1 bg-white/20 backdrop-blur-md border border-white/30 text-white text-[10px] font-black rounded-full uppercase tracking-wider">
                           {job.category}
                         </span>
-                        <h4 className="text-sm font-black text-slate-800 mt-1.5">{job.title}</h4>
+                        {job.isCompanyTask && (
+                          <span className="px-3 py-1 bg-emerald-500 text-white text-[10px] font-black rounded-full uppercase tracking-wider shadow-lg flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3" /> Official
+                          </span>
+                        )}
                       </div>
-                      <div className="text-right">
-                        <div className="text-base font-black text-emerald-600">৳{job.reward.toFixed(2)}</div>
-                        <span className="text-[10px] text-slate-400 font-bold">{job.completed}/{job.total} Done</span>
-                      </div>
-                    </div>
 
-                    <div className="space-y-1.5 my-3">
-                      {job.requirements.map((req, idx) => (
-                        <div key={idx} className="text-xs text-slate-600 flex items-center gap-2 font-medium">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
-                          <span>{req}</span>
+                      {/* Reward Overlay */}
+                      <div className="absolute bottom-4 right-4">
+                        <div className="bg-white/90 backdrop-blur-md px-4 py-1.5 rounded-2xl shadow-xl border border-white flex items-center gap-1">
+                          <span className="text-[10px] font-bold text-slate-500">পরিশ্রমিক:</span>
+                          <span className="text-sm font-black text-emerald-600">৳{job.reward.toFixed(2)}</span>
                         </div>
-                      ))}
+                      </div>
                     </div>
 
-                    <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
-                      <span className="text-slate-500 font-semibold">Employer: {job.employer}</span>
-                      <button 
-                        onClick={() => setSelectedJob(job)}
-                        className="w-28 h-9 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center text-xs transform hover:scale-105 active:scale-95"
-                      >
-                        {t(language, 'applyNow')}
-                      </button>
+                    <div className="p-5">
+                      <div className="flex items-start justify-between gap-3 mb-3">
+                        <h4 className="text-sm font-black text-slate-800 leading-tight group-hover:text-blue-700 transition-colors line-clamp-2">
+                          {job.title}
+                        </h4>
+                      </div>
+
+                      {/* Job Progress & Meta Info */}
+                      <div className="grid grid-cols-2 gap-4 mb-4">
+                        <div className="bg-slate-50 rounded-2xl p-2.5 border border-slate-100">
+                          <div className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
+                            <Users className="w-3 h-3" /> কর্মী বাকি
+                          </div>
+                          <div className="text-xs font-black text-slate-700">
+                            {job.total - job.completed} / {job.total}
+                          </div>
+                        </div>
+                        <div className="bg-slate-50 rounded-2xl p-2.5 border border-slate-100">
+                          <div className="text-[10px] text-slate-400 font-bold uppercase mb-1 flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> সময়
+                          </div>
+                          <div className="text-xs font-black text-slate-700">
+                            {job.durationMinutes || 10} মিনিট
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-100">
+                        <div className="flex items-center gap-2 max-w-[60%]">
+                          <div className="w-7 h-7 rounded-full bg-blue-100 flex items-center justify-center text-blue-600 font-black text-[10px]">
+                            {job.employer.charAt(0)}
+                          </div>
+                          <div className="truncate">
+                            <div className="text-[10px] text-slate-400 font-bold uppercase tracking-tighter">নিযুক্তকারী</div>
+                            <div className="text-[10px] font-black text-slate-700 truncate">{job.employer}</div>
+                          </div>
+                        </div>
+
+                        <button 
+                          onClick={() => setSelectedJob(job)}
+                          className="px-5 h-10 bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-black rounded-2xl shadow-lg shadow-blue-600/20 transition-all flex items-center justify-center text-[11px] transform hover:scale-105 active:scale-95"
+                        >
+                          কাজটি করুন
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))
@@ -1611,7 +2198,7 @@ export default function App() {
                   <div>
                     <div className="font-bold">bKash Payment Card</div>
                     <div className="text-[10px] text-emerald-300 font-bold">
-                      {user.linkedBkash ? `Linked: ${user.linkedBkash} (Verified)` : 'Not Linked Yet'}
+                      {user.linkedBkash ? `Linked: ${user.linkedBkash} (Active)` : 'Not Linked Yet'}
                     </div>
                   </div>
                 </div>
@@ -1619,7 +2206,7 @@ export default function App() {
                   onClick={() => setShowBkashLinkModal(true)}
                   className="px-3 py-1.5 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-xl shadow transition-all text-xs"
                 >
-                  {user.linkedBkash ? 'Change bKash' : 'Link bKash (OTP)'}
+                  {user.linkedBkash ? 'Change bKash' : 'Link bKash'}
                 </button>
               </div>
 
@@ -1638,11 +2225,6 @@ export default function App() {
             <div className="grid grid-cols-3 gap-3">
               <button 
                 onClick={() => {
-                  if (!user.linkedBkash) {
-                    alert('Please link your bKash account with OTP verification first before withdrawing!');
-                    setShowBkashLinkModal(true);
-                    return;
-                  }
                   setShowWithdrawModal(true);
                 }}
                 className="w-full py-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-black rounded-2xl shadow-xl flex flex-col items-center justify-center gap-1 hover:from-blue-700 hover:to-indigo-700 transition-all transform hover:scale-105 active:scale-95"
@@ -1659,10 +2241,10 @@ export default function App() {
               </button>
               <button 
                 onClick={() => {
-                  const appDomain = localStorage.getItem('custom_app_domain') || window.location.origin;
+                  const appDomain = localStorage.getItem('custom_app_domain') || 'https://work-grove.workgrove.workers.dev';
                   const inviteLink = `${appDomain}/?ref=${user.referralCode}`;
                   navigator.clipboard.writeText(inviteLink);
-                  alert(`Referral link copied to clipboard!\nYour Referral Code: ${user.referralCode}\n(When your invited friend completes Face Verification, you get ৳10 bonus automatically!)`);
+                  alert(`Referral link copied to clipboard!\n${inviteLink}\nYour Referral Code: ${user.referralCode}\n(Share with your friends to earn referral bonuses!)`);
                 }}
                 className="w-full py-4 bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black rounded-2xl shadow-xl flex flex-col items-center justify-center gap-1 hover:from-purple-700 hover:to-pink-700 transition-all transform hover:scale-105 active:scale-95"
               >
@@ -1683,8 +2265,8 @@ export default function App() {
             </div>
 
             <div className="space-y-3">
-              {messages.map(msg => (
-                <div key={msg.id} className={`p-4 rounded-3xl border transition-all transform hover:-translate-y-0.5 ${msg.unread ? 'bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border-blue-200 shadow-xl' : 'bg-white/90 border-slate-100 shadow-md'}`}>
+              {messages.map((msg, idx) => (
+                <div key={`${msg.id}-${idx}`} className={`p-4 rounded-3xl border transition-all transform hover:-translate-y-0.5 ${msg.unread ? 'bg-gradient-to-r from-blue-50/90 to-indigo-50/90 border-blue-200 shadow-xl' : 'bg-white/90 border-slate-100 shadow-md'}`}>
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-xs font-black text-blue-700">{msg.sender}</span>
                     <span className="text-[10px] text-slate-400 font-bold">{msg.time}</span>
@@ -1703,44 +2285,80 @@ export default function App() {
             <div className="bg-white/90 backdrop-blur-xl border border-blue-100 rounded-3xl p-6 shadow-2xl flex flex-col items-center text-center relative overflow-hidden">
               <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-500"></div>
 
-              <div className="w-24 h-24 rounded-3xl bg-gradient-to-tr from-blue-600 via-indigo-600 to-emerald-500 p-1.5 shadow-2xl mb-3 transform hover:rotate-6 transition-transform">
-                <img 
-                  src="/assets/aistudio/file_000000006d0081faaf05d5de78209f5b_a67c025c.png" 
-                  alt="WG Profile Logo" 
-                  className="w-full h-full object-contain rounded-2xl bg-white"
-                />
-              </div>
+              {(() => {
+                const rankInfo = calculateUserRank(user.xp || 0);
+                return (
+                  <div 
+                    className={`w-24 h-24 rounded-3xl p-1.5 shadow-2xl mb-4 transform hover:rotate-6 transition-all duration-500 relative group ${rankInfo.borderAnimationClass} ring-4 ring-offset-4 ring-offset-white`}
+                    style={{ filter: `drop-shadow(0 0 12px ${rankInfo.glowColor}80)` }}
+                  >
+                    {/* Floating Tier Badge */}
+                    <div className="absolute -top-3 -right-3 z-20 bg-gradient-to-br from-slate-900 to-indigo-950 text-white border border-indigo-400/50 w-10 h-10 rounded-2xl flex items-center justify-center font-black text-xs shadow-lg transform group-hover:scale-125 transition-transform">
+                      {rankInfo.tierRoman}
+                    </div>
 
-              <h2 className="text-lg font-black text-slate-800 flex items-center justify-center gap-1.5">
+                    <img 
+                      src="/assets/aistudio/file_000000006d0081faaf05d5de78209f5b_a67c025c.png" 
+                      alt="WG Profile Logo" 
+                      className="w-full h-full object-contain rounded-2xl bg-white relative z-10"
+                    />
+                    
+                    {/* Animated Glow Layer */}
+                    <div className="absolute inset-0 rounded-2xl bg-gradient-to-tr from-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity animate-pulse"></div>
+                  </div>
+                );
+              })()}
+
+              <h2 className="text-xl font-black text-slate-800 flex items-center justify-center gap-1.5 mb-0.5">
                 {user.name}
                 <ShieldCheck className="w-5 h-5 text-blue-600 animate-pulse" />
               </h2>
               <p className="text-xs text-slate-500 font-bold mb-1">Referral Code: <span className="font-mono font-black text-emerald-600">{user.referralCode}</span></p>
-              <p className="text-xs text-slate-500 font-bold mb-3">{user.email}</p>
+              <p className="text-xs text-slate-500 font-bold mb-4">{user.email}</p>
 
-              <div className="flex items-center gap-2 mb-4">
-                <span className={`px-3.5 py-1 text-xs font-black rounded-xl shadow-sm ${
-                  user.verified 
-                    ? 'bg-emerald-100 text-emerald-800' 
-                    : user.kycStatus === 'pending'
-                    ? 'bg-amber-100 text-amber-800'
-                    : 'bg-slate-100 text-slate-700'
-                }`}>
-                  {user.verified 
-                    ? 'ফেস ও জন্ম সনদ ভেরিফাইড (KYC Approved)' 
-                    : user.kycStatus === 'pending' 
-                    ? 'পেন্ডিং (অনার পর্যালোচনার অপেক্ষায়)' 
-                    : 'আনভেরিফাইড (ফেস ও জন্ম সনদ দিন)'}
-                </span>
-                {!user.verified && (
-                  <button 
-                    onClick={() => setShowFaceVerifyModal(true)}
-                    className="px-3.5 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow transition-all"
-                  >
-                    {user.kycStatus === 'pending' ? 'স্ট্যাটাস ও ছবি দেখুন' : 'ভেরিফাই করুন'}
-                  </button>
-                )}
-              </div>
+              {/* Animated User Level & Rank System Card */}
+              {(() => {
+                const rankInfo = calculateUserRank(user.xp || 45);
+                return (
+                  <div className="w-full mb-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 rounded-2xl p-4 text-white shadow-xl relative overflow-hidden border border-indigo-500/30">
+                    <div className="absolute -right-8 -top-8 w-32 h-32 bg-indigo-500/20 rounded-full blur-2xl pointer-events-none animate-pulse"></div>
+                    <div className="flex items-center justify-between mb-2 relative z-10">
+                      <div className="flex items-center gap-2">
+                        <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-amber-400 to-yellow-600 flex items-center justify-center shadow-lg transform hover:scale-110 transition-transform">
+                          <Award className="w-5 h-5 text-white animate-bounce" />
+                        </div>
+                        <div className="text-left">
+                          <div className="text-[10px] text-indigo-300 font-bold uppercase tracking-wider">User Rank & Level</div>
+                          <div className="text-sm font-black flex items-center gap-1.5 text-yellow-300">
+                            <span>{rankInfo.rankName}</span>
+                            <span className="px-2 py-0.5 rounded-lg bg-yellow-500/20 border border-yellow-400/40 text-[11px] font-mono text-yellow-200">
+                              Tier {rankInfo.tierRoman}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-[10px] text-slate-400 font-semibold">Total XP</div>
+                        <div className="text-sm font-black text-emerald-400 font-mono">{user.xp || 45} XP</div>
+                      </div>
+                    </div>
+
+                    {/* Animated Progress Bar to Next Rank */}
+                    <div className="space-y-1 relative z-10">
+                      <div className="flex justify-between text-[10px] font-bold text-indigo-200">
+                        <span>Progress to next tier</span>
+                        <span>{user.xp || 45} / {rankInfo.nextXpThreshold} XP</span>
+                      </div>
+                      <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-indigo-500/20 shadow-inner">
+                        <div 
+                          className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-emerald-400 rounded-full transition-all duration-1000 animate-pulse"
+                          style={{ width: `${Math.min(100, Math.max(5, ((user.xp || 45) / rankInfo.nextXpThreshold) * 100))}%` }}
+                        ></div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
 
               <div className="grid grid-cols-3 gap-3 w-full pt-4 border-t border-slate-100 text-center">
                 <div className="bg-gradient-to-b from-blue-50 to-indigo-50/50 p-3 rounded-2xl shadow-sm border border-blue-100">
@@ -1756,17 +2374,38 @@ export default function App() {
                   <div className="text-[10px] text-slate-500 font-bold">Status</div>
                 </div>
               </div>
+
+              {/* Password Reveal Section for User */}
+              <div className="w-full mt-4 p-3 bg-slate-50 border border-slate-200 rounded-2xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-xl bg-white border border-slate-200 flex items-center justify-center shadow-sm">
+                    <KeyRound className="w-4 h-4 text-indigo-600" />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-[10px] text-slate-400 font-bold uppercase">My Password</div>
+                    <div className="text-xs font-mono font-bold text-slate-700">
+                      {showProfilePassword ? (user.passwordHint || '••••••••') : '••••••••'}
+                    </div>
+                  </div>
+                </div>
+                <button 
+                  onClick={() => setShowProfilePassword(!showProfilePassword)}
+                  className="p-2 text-slate-400 hover:text-indigo-600 transition-colors"
+                >
+                  {showProfilePassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
 
             <div className="bg-white/90 backdrop-blur-xl border border-blue-100 rounded-3xl shadow-2xl overflow-hidden divide-y divide-slate-100">
               {[
-                { title: 'ফেস ভেরিফিকেশন ও জন্ম সনদ (KYC)', icon: ScanFace, color: 'text-blue-600', action: () => setShowFaceVerifyModal(true) },
                 { title: t(language, 'editProfile'), icon: User, action: () => { setEditName(user.name); setEditMobile(user.mobile); setShowEditProfileModal(true); } },
-                { title: 'Link bKash Account (OTP)', icon: PhoneIcon, action: () => setShowBkashLinkModal(true) },
+                { title: 'Link bKash Wallet (বিকাশ যুক্ত করুন)', icon: PhoneIcon, action: () => setShowBkashLinkModal(true) },
+                { title: 'Referral Analytics (রেফারেল পরিসংখ্যান)', icon: PieChart, action: () => setShowReferralAnalytics(true) },
                 { title: 'Configure Custom Firebase', icon: Database, action: () => setShowCustomFirebaseModal(true) },
                 { title: t(language, 'findFollowers'), icon: Users, action: () => alert('Find followers feature active.') },
                 { title: t(language, 'agencies'), icon: Briefcase, action: () => alert('Agencies directory active.') },
-                { title: t(language, 'myNetwork'), icon: Share2, action: () => alert(`My Referral Code: ${user.referralCode}. Share with friends to earn ৳10 per verified face KYC!`) },
+                { title: t(language, 'myNetwork'), icon: Share2, action: () => alert(`My Referral Code: ${user.referralCode}. Share with friends to earn referral bonuses!`) },
                 { title: t(language, 'leaderboard'), icon: Award, action: () => alert('Leaderboard rankings active.') },
                 { title: t(language, 'logout'), icon: LogOut, color: 'text-blue-600', action: handleSignOut },
                 { title: t(language, 'deleteAccount'), icon: Trash2, color: 'text-red-600', action: () => { if(confirm('Are you sure you want to delete account?')) handleSignOut(); } },
@@ -1859,27 +2498,7 @@ export default function App() {
         </div>
       </nav>
 
-      {/* MODAL: FACE VERIFICATION & BIRTH CERTIFICATE (KYC) */}
-      <FaceBirthKycModal
-        isOpen={showFaceVerifyModal}
-        onClose={() => setShowFaceVerifyModal(false)}
-        user={{
-          name: user.name,
-          email: user.email,
-          mobile: user.mobile,
-          verified: user.verified,
-          kycStatus: user.kycStatus,
-          kycRejectionReason: user.kycRejectionReason,
-          facePhoto: user.facePhoto,
-          birthCertPhoto: user.birthCertPhoto,
-          birthCertNumber: user.birthCertNumber,
-          referredBy: user.referredBy
-        }}
-        onSubmitKyc={handleSubmitKyc}
-        onOpenLightbox={(imageUrl, title, subtitle) => {
-          setLightboxState({ isOpen: true, imageUrl, title, subtitle });
-        }}
-      />
+
 
       {/* MODAL: CUSTOM FIREBASE SETTINGS */}
       {showCustomFirebaseModal && (
@@ -1953,57 +2572,81 @@ export default function App() {
         </div>
       )}
 
-      {/* MODAL: bKash OTP VERIFICATION & LINKING */}
+      {/* MODAL: DIRECT bKash LINKING (NO OTP BLOCK) */}
       {showBkashLinkModal && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl border border-pink-200 space-y-4 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-full bg-pink-600 text-white flex items-center justify-center font-bold text-xs">bK</div>
-                <h3 className="text-base font-black text-slate-800">Link bKash with OTP</h3>
+        <div className="fixed inset-0 bg-slate-950/70 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-slate-900 border border-pink-500/40 rounded-3xl max-w-sm w-full p-6 shadow-2xl text-white space-y-4 animate-in zoom-in-95 duration-200 relative overflow-hidden">
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r from-pink-500 to-rose-600 animate-pulse"></div>
+
+            <div className="flex items-center justify-between pb-2 border-b border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-2xl bg-gradient-to-tr from-pink-500 to-rose-600 text-white flex items-center justify-center font-black text-xs shadow-md">
+                  bK
+                </div>
+                <div>
+                  <h3 className="text-sm font-black text-white">bKash Account Link</h3>
+                  <p className="text-[10px] text-pink-400 font-bold">সরাসরি বিকাশ নম্বর যুক্ত করুন</p>
+                </div>
               </div>
-              <button onClick={() => setShowBkashLinkModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
+              <button onClick={() => setShowBkashLinkModal(false)} className="p-1 text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="space-y-4">
-              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900 space-y-2">
-                <div className="font-black text-amber-800 flex items-center gap-1.5">
-                  <AlertCircle className="w-4 h-4 shrink-0 text-amber-600" />
-                  <span>bKash Merchant API Backend Required</span>
-                </div>
-                <p className="leading-relaxed font-medium">
-                  Live bKash OTP verification and automated settlement require secure backend integration with official bKash Merchant API (App Key, App Secret, Username, Password). No simulated or fake OTP codes are generated in production.
-                </p>
-              </div>
-
+            <div className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">bKash Merchant / Personal Account Number</label>
-                <input 
-                  type="tel"
-                  required
-                  placeholder="01712345678"
-                  value={bkashPhoneInput}
-                  onChange={(e) => setBkashPhoneInput(e.target.value)}
-                  className="w-full p-3 bg-pink-50/50 border border-pink-200 rounded-2xl text-xs font-mono focus:ring-2 focus:ring-pink-500 focus:outline-none font-bold"
-                />
+                <label className="block text-xs font-black text-slate-300 mb-1.5">
+                  আপনার বিকাশ পার্সোনাল নম্বর (11 Digits)
+                </label>
+                <div className="relative">
+                  <Smartphone className="absolute left-3.5 top-3.5 w-4 h-4 text-pink-400" />
+                  <input 
+                    type="tel"
+                    required
+                    placeholder="017XXXXXXXX"
+                    value={bkashPhoneInput}
+                    onChange={(e) => setBkashPhoneInput(e.target.value)}
+                    className="w-full pl-11 pr-4 py-3 bg-slate-950/80 border border-slate-700 rounded-2xl text-xs font-mono font-bold text-white focus:ring-2 focus:ring-pink-500 focus:outline-none"
+                  />
+                </div>
               </div>
 
-              <button 
-                type="button"
-                onClick={async () => {
-                  if (bkashPhoneInput.length < 11) {
-                    alert('সঠিক ১১ ডিজিটের বিকাশ নম্বর দিন।');
-                    return;
-                  }
-                  // Check backend bKash API connection status
-                  alert('⚠️ bKash Merchant API backend credentials are not yet configured. To link bKash with live OTP, please configure your bKash API credentials securely on the backend server.');
-                }}
-                className="w-full py-3 bg-pink-600 hover:bg-pink-700 text-white font-bold rounded-2xl shadow-lg text-xs"
-              >
-                Connect with bKash Merchant API
-              </button>
+              <div className="p-3 bg-pink-950/30 border border-pink-500/20 rounded-2xl text-[11px] text-pink-300 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-pink-400 shrink-0" />
+                <span>কোনো কোড বা ওটিপি লাগবে না। নম্বর সেভ হলেই সরাসরি উইথড্র নেওয়া যাবে!</span>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button 
+                  type="button" 
+                  onClick={() => setShowBkashLinkModal(false)} 
+                  className="flex-1 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs rounded-2xl transition-all"
+                >
+                  বাতিল
+                </button>
+                <button 
+                  type="button"
+                  onClick={async () => {
+                    const clean = bkashPhoneInput.trim().replace(/\s+/g, '');
+                    if (clean.length < 11) {
+                      alert('দয়া করে সঠিক ১১ ডিজিটের বিকাশ নম্বর দিন (যেমন: 017XXXXXXXX)।');
+                      return;
+                    }
+                    setUser(prev => ({ ...prev, linkedBkash: clean }));
+                    if (firebaseUser) {
+                      try {
+                        await updateDoc(doc(db, 'users', firebaseUser.uid), { linkedBkash: clean });
+                      } catch (e) {}
+                    }
+                    setShowBkashLinkModal(false);
+                    confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+                    alert(`বিকাশ নম্বর (${clean}) সফলভাবে যুক্ত হয়েছে! এবার সরাসরি উইথড্র করতে পারবেন।`);
+                  }}
+                  className="flex-1 py-3 bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white font-black text-xs rounded-2xl shadow-lg transition-all"
+                >
+                  বিকাশ সেভ করুন
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2027,8 +2670,8 @@ export default function App() {
               {transactions.length === 0 ? (
                 <p className="text-xs text-slate-500 text-center py-6">No recent transactions yet.</p>
               ) : (
-                transactions.map(tx => (
-                  <div key={tx.id} className="flex items-center justify-between p-3.5 bg-blue-50/50 rounded-2xl border border-blue-100 shadow-sm">
+                transactions.map((tx, idx) => (
+                  <div key={`${tx.id}-${idx}`} className="flex items-center justify-between p-3.5 bg-blue-50/50 rounded-2xl border border-blue-100 shadow-sm">
                     <div>
                       <div className="text-xs font-black text-slate-800">{tx.type}</div>
                       <div className="text-[10px] text-slate-400 font-bold">{tx.date}</div>
@@ -2128,11 +2771,23 @@ export default function App() {
       {/* MODAL: JOB APPLICATION / PROOF SUBMISSION */}
       {selectedJob && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-blue-100 space-y-4 animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-blue-100 space-y-4 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
             <div className="flex items-start justify-between">
-              <div>
-                <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-black rounded-lg">{selectedJob.category}</span>
-                <h3 className="text-base font-black text-slate-800 mt-1.5">{selectedJob.title}</h3>
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 rounded-2xl overflow-hidden border-2 border-blue-100 shadow-sm">
+                  <img src={selectedJob.thumbnail || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=60'} alt="Thumbnail" className="w-full h-full object-cover" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="px-2.5 py-0.5 bg-blue-100 text-blue-800 text-[10px] font-black rounded-lg uppercase">{selectedJob.taskType || 'Task'}</span>
+                    {selectedJob.isCompanyTask && (
+                      <span className="px-2.5 py-0.5 bg-emerald-100 text-emerald-800 text-[10px] font-black rounded-lg uppercase flex items-center gap-1">
+                        <ShieldCheck className="w-3 h-3" /> Official
+                      </span>
+                    )}
+                  </div>
+                  <h3 className="text-base font-black text-slate-800 mt-1 line-clamp-1">{selectedJob.title}</h3>
+                </div>
               </div>
               <button onClick={() => setSelectedJob(null)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
@@ -2141,42 +2796,69 @@ export default function App() {
 
             <div className="bg-blue-50/70 p-3.5 rounded-2xl border border-blue-100 space-y-2 shadow-inner">
               <div className="flex justify-between text-xs font-bold">
-                <span className="text-slate-500">Reward:</span>
+                <span className="text-slate-500">পরিশ্রমিক (Reward):</span>
                 <span className="text-emerald-600 font-black text-sm">৳{selectedJob.reward.toFixed(2)}</span>
               </div>
               <div className="flex justify-between text-xs font-bold">
-                <span className="text-slate-500">Employer:</span>
-                <span className="text-slate-800">{selectedJob.employer}</span>
+                <span className="text-slate-500">নিযুক্তকারী:</span>
+                <span className="text-slate-800 font-black">{selectedJob.employer}</span>
+              </div>
+              <div className="flex justify-between text-xs font-bold">
+                <span className="text-slate-500">সময়সীমা:</span>
+                <span className="text-blue-700 font-black">{selectedJob.durationMinutes || 10} মিনিট</span>
               </div>
             </div>
 
+            {selectedJob.targetLink && (
+              <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-2xl">
+                <div className="text-[10px] font-black text-indigo-800 uppercase mb-1.5 flex items-center gap-1.5">
+                  <ExternalLink className="w-3.5 h-3.5" /> কাজের লিংক (Target Link):
+                </div>
+                <a 
+                  href={selectedJob.targetLink} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="block p-2.5 bg-white border border-indigo-200 rounded-xl text-[11px] font-bold text-blue-700 truncate hover:text-blue-800 transition-colors"
+                >
+                  {selectedJob.targetLink}
+                </a>
+                <p className="text-[10px] text-indigo-500 font-bold mt-1.5">* লিংকে ক্লিক করে কাজটি সম্পন্ন করুন।</p>
+              </div>
+            )}
+
             <div className="space-y-2">
-              <h4 className="text-xs font-black text-slate-700 uppercase">{t(language, 'taskRequirement')}:</h4>
+              <h4 className="text-xs font-black text-slate-700 uppercase flex items-center gap-1.5">
+                <ListChecks className="w-3.5 h-3.5 text-blue-600" />
+                কাজের শর্তসমূহ:
+              </h4>
               <ul className="space-y-1.5">
                 {selectedJob.requirements.map((req, idx) => (
                   <li key={idx} className="text-xs text-slate-600 flex items-center gap-2 font-medium">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
                     <span>{req}</span>
                   </li>
                 ))}
               </ul>
             </div>
 
-            <div className="space-y-1">
-              <label className="block text-xs font-black text-slate-700 uppercase">Proof Submission Instructions:</label>
-              <p className="text-xs text-slate-500 font-medium">{selectedJob.proofInstruction}</p>
+            <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+              <label className="block text-xs font-black text-slate-700 uppercase">প্রুফ সাবমিট করার নিয়ম:</label>
+              <p className="text-xs text-slate-600 font-medium italic">"{selectedJob.proofInstruction}"</p>
             </div>
 
             <form onSubmit={handleApplyJob} className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Your Proof Details / Link</label>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1.5">
+                  {selectedJob.taskType === 'video' ? <Video className="w-3.5 h-3.5" /> : selectedJob.taskType === 'screenshot' ? <Camera className="w-3.5 h-3.5" /> : <FileText className="w-3.5 h-3.5" />}
+                  আপনার প্রুফ (Proof Details / Link)
+                </label>
                 <textarea 
                   required
                   rows={3}
-                  placeholder="Enter your username, account link or details as proof..."
+                  placeholder={selectedJob.taskType === 'video' ? 'ভিডিওর লিংক বা আপনার ইউজারনেম দিন...' : selectedJob.taskType === 'screenshot' ? 'স্ক্রিনশটের লিংক বা প্রুফ দিন...' : 'আপনার ইউজারনেম বা কাজের ডিটেইলস দিন...'}
                   value={proofText}
                   onChange={(e) => setProofText(e.target.value)}
-                  className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                  className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium shadow-inner"
                 ></textarea>
               </div>
 
@@ -2186,13 +2868,13 @@ export default function App() {
                   onClick={() => setSelectedJob(null)}
                   className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-2xl transition-all"
                 >
-                  {t(language, 'cancel')}
+                  বাতিল
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg transition-all"
+                  className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-2xl shadow-lg transition-all transform hover:scale-[1.02] active:scale-95"
                 >
-                  {t(language, 'submit')}
+                  প্রুফ জমা দিন (Submit Proof)
                 </button>
               </div>
             </form>
@@ -2203,9 +2885,14 @@ export default function App() {
       {/* MODAL: POST NEW JOB */}
       {showPostJobModal && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-blue-100 space-y-4 animate-in zoom-in-95 duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-blue-100 space-y-4 animate-in zoom-in-95 duration-200 overflow-y-auto max-h-[90vh]">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-800">{t(language, 'postNewJob')}</h3>
+              <div className="flex items-center gap-2">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg">
+                  <PlusCircle className="w-6 h-6" />
+                </div>
+                <h3 className="text-base font-black text-slate-800">{t(language, 'postNewJob')}</h3>
+              </div>
               <button onClick={() => setShowPostJobModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
@@ -2220,58 +2907,123 @@ export default function App() {
                   placeholder="e.g. YouTube Subscribe & Watch Task"
                   value={newJobTitle}
                   onChange={(e) => setNewJobTitle(e.target.value)}
-                  className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                  className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">কাজের ধরন (Task Type)</label>
+                  <select 
+                    value={newJobType}
+                    onChange={(e) => setNewJobType(e.target.value as any)}
+                    className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold"
+                  >
+                    <option value="screenshot">Screenshot Proof</option>
+                    <option value="video">Video Watch</option>
+                    <option value="link">Link Visit/Join</option>
+                    <option value="social">Social Media</option>
+                  </select>
+                </div>
+                <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">{t(language, 'category')}</label>
                   <select 
                     value={newJobCategory}
                     onChange={(e) => setNewJobCategory(e.target.value)}
-                    className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                    className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-bold"
                   >
                     <option value="Micro Job">Micro Job</option>
                     <option value="Social Media">Social Media</option>
                     <option value="Special Work">Special Work</option>
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">{t(language, 'rewardPerWorker')} (৳)</label>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1"> থাম্বনেইল ইউআরএল (Thumbnail URL)</label>
+                <input 
+                  type="url" 
+                  placeholder="https://example.com/image.jpg"
+                  value={newJobThumbnail}
+                  onChange={(e) => setNewJobThumbnail(e.target.value)}
+                  className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">কাজের লিংক (Target Link / URL)</label>
+                <input 
+                  type="url" 
+                  required
+                  placeholder="https://youtube.com/watch?v=..."
+                  value={newJobLink}
+                  onChange={(e) => setNewJobLink(e.target.value)}
+                  className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-3">
+                <div className="col-span-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">রিওয়ার্ড (৳)</label>
                   <input 
                     type="number" 
                     required
-                    min={5}
+                    min={2}
                     value={newJobReward}
                     onChange={(e) => setNewJobReward(Number(e.target.value))}
-                    className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
+                    className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-black"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">কর্মী সংখ্যা</label>
+                  <input 
+                    type="number" 
+                    required
+                    min={1}
+                    value={newJobWorkers}
+                    onChange={(e) => setNewJobWorkers(Number(e.target.value))}
+                    className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-black"
+                  />
+                </div>
+                <div className="col-span-1">
+                  <label className="block text-xs font-bold text-slate-700 mb-1">সময় (মিনিট)</label>
+                  <input 
+                    type="number" 
+                    required
+                    min={1}
+                    value={newJobDuration}
+                    onChange={(e) => setNewJobDuration(Number(e.target.value))}
+                    className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-black"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t(language, 'workersNeeded')}</label>
-                <input 
-                  type="number" 
+                <label className="block text-xs font-bold text-slate-700 mb-1">কাজের শর্তসমূহ (Comma separated)</label>
+                <textarea 
+                  rows={2}
                   required
-                  min={10}
-                  value={newJobWorkers}
-                  onChange={(e) => setNewJobWorkers(Number(e.target.value))}
-                  className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">{t(language, 'taskRequirement')} (Comma separated)</label>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="Watch video 2 mins, Subscribe channel, Leave comment"
+                  placeholder="Watch video 2 mins, Subscribe channel, Leave comment..."
                   value={newJobReqs}
                   onChange={(e) => setNewJobReqs(e.target.value)}
                   className="w-full p-3 bg-blue-50/50 border border-blue-200 rounded-2xl text-xs focus:ring-2 focus:ring-blue-500 focus:outline-none font-medium"
-                />
+                ></textarea>
+              </div>
+
+              {/* LIVE COST SUMMARY */}
+              <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl space-y-2 shadow-inner">
+                <div className="flex justify-between text-xs font-bold text-slate-600">
+                  <span>কাজের মোট খরচ (Reward × Workers):</span>
+                  <span>৳{(newJobReward * newJobWorkers).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between text-xs font-bold text-indigo-700">
+                  <span>কোম্পানি সার্ভিস ফি (2%):</span>
+                  <span>৳{(newJobReward * newJobWorkers * 0.02).toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between items-center pt-2 border-t border-blue-200">
+                  <span className="text-xs font-black text-slate-800 uppercase">সর্বমোট প্রদেয় (Total Payable):</span>
+                  <span className="text-base font-black text-blue-700">৳{(newJobReward * newJobWorkers * 1.02).toFixed(2)}</span>
+                </div>
               </div>
 
               <div className="flex gap-2 pt-2">
@@ -2284,9 +3036,14 @@ export default function App() {
                 </button>
                 <button 
                   type="submit"
-                  className="flex-1 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-bold text-xs rounded-2xl shadow-lg transition-all"
+                  disabled={user.totalBalance < (newJobReward * newJobWorkers * 1.02)}
+                  className={`flex-1 py-3 font-black text-xs rounded-2xl shadow-lg transition-all transform hover:scale-[1.02] active:scale-95 ${
+                    user.totalBalance >= (newJobReward * newJobWorkers * 1.02)
+                      ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white'
+                      : 'bg-slate-300 text-slate-500 cursor-not-allowed opacity-70'
+                  }`}
                 >
-                  Post Job (Firebase)
+                  {user.totalBalance >= (newJobReward * newJobWorkers * 1.02) ? 'Post Job Now' : 'Insufficient Balance'}
                 </button>
               </div>
             </form>
@@ -2299,18 +3056,37 @@ export default function App() {
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-blue-100 space-y-4 animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-black text-slate-800">Withdraw Funds (bKash)</h3>
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-pink-600 text-white flex items-center justify-center font-bold text-xs">bK</div>
+                <h3 className="text-base font-black text-slate-800">Withdraw Funds (bKash)</h3>
+              </div>
               <button onClick={() => setShowWithdrawModal(false)} className="p-1 text-slate-400 hover:text-slate-600">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div className="bg-blue-50 p-3.5 rounded-2xl border border-blue-100 text-xs text-blue-900 font-bold space-y-1">
-              <div>Available Total Balance: <span className="text-emerald-600 font-black">৳{user.totalBalance.toFixed(2)}</span></div>
-              <div className="text-[11px] text-pink-700">Linked bKash Account: <span className="font-mono font-black">{user.linkedBkash}</span></div>
+            <div className="bg-gradient-to-r from-blue-50 to-pink-50 p-3.5 rounded-2xl border border-pink-100 text-xs text-blue-900 font-bold space-y-1">
+              <div className="flex justify-between items-center">
+                <span>Available Total Balance:</span>
+                <span className="text-emerald-600 font-black text-sm">৳{user.totalBalance.toFixed(2)}</span>
+              </div>
             </div>
 
             <form onSubmit={handleWithdrawSubmit} className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  উইথড্র বিকাশ নম্বর (bKash Number)
+                </label>
+                <input 
+                  type="tel" 
+                  required 
+                  placeholder="017XXXXXXXX"
+                  value={withdrawBkashInput || user.linkedBkash} 
+                  onChange={(e) => setWithdrawBkashInput(e.target.value)}
+                  className="w-full p-3 bg-pink-50/40 border border-pink-200 rounded-2xl text-xs font-mono font-bold focus:ring-2 focus:ring-pink-500 focus:outline-none" 
+                />
+              </div>
+
               <div>
                 <label className="block text-xs font-bold text-slate-700 mb-1">
                   উইথড্র পরিমাণ (৳) - সর্বনিম্ন ৳{platformSettings.minWithdraw || 100}
@@ -2535,6 +3311,77 @@ export default function App() {
         </div>
       )}
 
+      {/* MODAL: REFERRAL ANALYTICS */}
+      {showReferralAnalytics && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-blue-100 space-y-4 animate-in zoom-in-95 duration-200 max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between pb-2 border-b border-slate-100 shrink-0">
+              <div className="flex items-center gap-2">
+                <PieChart className="w-5 h-5 text-emerald-600" />
+                <h3 className="text-base font-black text-slate-800">Referral Analytics</h3>
+              </div>
+              <button onClick={() => setShowReferralAnalytics(false)} className="p-1 text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="bg-emerald-50/70 p-4 rounded-2xl border border-emerald-100 shadow-inner shrink-0">
+              <div className="flex justify-between items-center">
+                <div>
+                  <div className="text-[10px] font-black text-emerald-800 uppercase">Total Referrals</div>
+                  <div className="text-2xl font-black text-emerald-700">{allUsers.filter(u => u.referredBy === user.referralCode).length}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] font-black text-emerald-800 uppercase">Total Bonus Earned</div>
+                  <div className="text-2xl font-black text-emerald-700">৳{allUsers.filter(u => u.referredBy === user.referralCode && u.verified).length * (platformSettings.referralBonus || 10)}</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-2 min-h-0">
+              <h4 className="text-[11px] font-black text-slate-400 uppercase tracking-wider sticky top-0 bg-white py-1">Recent Referral List</h4>
+              {allUsers.filter(u => u.referredBy === user.referralCode).length === 0 ? (
+                <div className="py-12 text-center space-y-3">
+                  <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto border border-slate-100">
+                    <Users className="w-8 h-8 text-slate-200" />
+                  </div>
+                  <p className="text-xs text-slate-400 font-bold">No referrals yet. Share your code to earn!</p>
+                </div>
+              ) : (
+                allUsers.filter(u => u.referredBy === user.referralCode).map((ref, idx) => (
+                  <div key={ref.id || idx} className="p-3.5 bg-white rounded-2xl border border-slate-100 shadow-sm hover:border-emerald-200 transition-all flex items-center justify-between group">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-50 to-blue-50 border border-slate-100 flex items-center justify-center font-black text-emerald-600 text-sm shadow-sm group-hover:scale-110 transition-transform">
+                        {ref.name ? ref.name.charAt(0) : 'U'}
+                      </div>
+                      <div>
+                        <div className="text-xs font-black text-slate-800 flex items-center gap-1.5">
+                          {ref.name}
+                          {ref.verified && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-bold">{ref.username ? `@${ref.username}` : 'Pending Username'}</div>
+                      </div>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-xs font-black ${ref.verified ? 'text-emerald-600' : 'text-amber-500'}`}>
+                        {ref.verified ? `+৳${platformSettings.referralBonus || 10}` : 'Pending KYC'}
+                      </div>
+                      <div className="text-[9px] text-slate-300 font-bold">Contribution</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+
+            <button 
+              onClick={() => setShowReferralAnalytics(false)}
+              className="w-full py-3.5 bg-slate-900 text-white font-black text-xs rounded-2xl shadow-lg hover:bg-slate-800 transition-all shrink-0 mt-2"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

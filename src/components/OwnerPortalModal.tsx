@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { 
   X, Shield, ShieldCheck, Users, Wallet, CheckCircle2, XCircle, 
-  Clock, Trash2, PlusCircle, Search, Eye, ZoomIn, DollarSign, ArrowUpRight, 
+  Clock, Trash2, PlusCircle, Search, Eye, EyeOff, ZoomIn, DollarSign, ArrowUpRight, 
   ArrowDownLeft, FileText, Smartphone, AlertCircle, RefreshCw, 
-  Send, Check, Camera, ScanFace, CreditCard, Settings, ChevronRight
+  Send, Check, Camera, ScanFace, CreditCard, Settings, ChevronRight,
+  KeyRound, Building2, Award, Sparkles
 } from 'lucide-react';
 import { doc, updateDoc, deleteDoc, addDoc, collection, setDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import confetti from 'canvas-confetti';
+import { calculateUserRank } from '../utils/userLevelUtils';
 
 export interface KycSubmission {
   id: string;
@@ -62,8 +64,10 @@ export interface TaskProofSubmission {
 export interface PlatformUser {
   id: string;
   name: string;
+  username?: string;
   email: string;
   mobile: string;
+  passwordHint?: string;
   totalBalance: number;
   incomeBalance: number;
   referBalance: number;
@@ -72,6 +76,8 @@ export interface PlatformUser {
   referralCode: string;
   referrals: number;
   referredBy?: string;
+  xp?: number;
+  isCompanyStaff?: boolean;
 }
 
 export interface PlatformSettings {
@@ -81,6 +87,8 @@ export interface PlatformSettings {
   minWithdraw: number;
   referralBonus: number;
   noticeText: string;
+  taskPlatformFeePercent?: number;
+  companyRevenue?: number;
 }
 
 interface OwnerPortalModalProps {
@@ -149,9 +157,31 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
   const [newJobWorkers, setNewJobWorkers] = useState<number>(50);
   const [newJobReqs, setNewJobReqs] = useState('');
   const [newJobProof, setNewJobProof] = useState('');
+  const [newJobThumbnail, setNewJobThumbnail] = useState('');
+  const [newJobLink, setNewJobLink] = useState('');
+  const [newJobType, setNewJobType] = useState<'screenshot' | 'video' | 'link' | 'social'>('screenshot');
+  const [newJobDuration, setNewJobDuration] = useState<number>(15);
 
   // Broadcast Message State
   const [broadcastText, setBroadcastText] = useState('');
+  const [revealedPasswords, setRevealedPasswords] = useState<Record<string, boolean>>({});
+
+  const togglePasswordReveal = (userId: string) => {
+    setRevealedPasswords(prev => ({ ...prev, [userId]: !prev[userId] }));
+  };
+
+  const handleToggleStaff = async (u: PlatformUser) => {
+    try {
+      const nextStaffStatus = !u.isCompanyStaff;
+      await updateDoc(doc(db, 'users', u.id), {
+        isCompanyStaff: nextStaffStatus
+      });
+      alert(`${u.name}-কে কোম্পানি অফিসিয়াল স্টাফ ${nextStaffStatus ? 'হিসেবে নিযুক্ত করা হয়েছে' : 'থেকে প্রত্যাহার করা হয়েছে'}।`);
+    } catch(err) {
+      console.error(err);
+      alert('কোম্পানি স্টাফ স্ট্যাটাস পরিবর্তন করতে সমস্যা হয়েছে।');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -173,6 +203,7 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
     const q = userSearchQuery.toLowerCase();
     return (
       (u.name && u.name.toLowerCase().includes(q)) ||
+      (u.username && u.username.toLowerCase().includes(q)) ||
       (u.email && u.email.toLowerCase().includes(q)) ||
       (u.mobile && u.mobile.toLowerCase().includes(q)) ||
       (u.referralCode && u.referralCode.toLowerCase().includes(q))
@@ -393,10 +424,15 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
         reward: Number(newJobReward),
         completed: 0,
         total: Number(newJobWorkers),
-        employer: 'WORK GROVE OFFICIAL',
+        employer: 'Work Grove Official',
         requirements: newJobReqs ? newJobReqs.split(',').map(s => s.trim()) : ['Complete assigned micro task'],
         proofInstruction: newJobProof.trim() || 'Provide proof username or screenshot.',
         status: 'active',
+        isCompanyTask: true,
+        thumbnail: newJobThumbnail.trim() || 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=500&auto=format&fit=crop&q=60',
+        taskType: newJobType,
+        targetLink: newJobLink.trim(),
+        durationMinutes: newJobDuration,
         createdAt: new Date().toISOString()
       };
       await addDoc(collection(db, 'jobs'), jobData);
@@ -513,6 +549,14 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
               <div className="text-lg font-black text-pink-600">{pendingWithdrawCount}</div>
             </div>
             <Wallet className="w-6 h-6 text-pink-500" />
+          </div>
+
+          <div className="bg-indigo-50/80 p-2.5 rounded-2xl border border-indigo-100 flex items-center justify-between col-span-2 sm:col-span-1">
+            <div>
+              <div className="text-[10px] font-black text-indigo-800 uppercase">কোম্পানি ইনকাম (২%)</div>
+              <div className="text-lg font-black text-indigo-600">৳{(platformSettings.companyRevenue || 0).toFixed(2)}</div>
+            </div>
+            <DollarSign className="w-6 h-6 text-indigo-400" />
           </div>
         </div>
 
@@ -662,9 +706,9 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {filteredKyc.map((item) => (
+                  {filteredKyc.map((item, idx) => (
                     <div 
-                      key={item.id} 
+                      key={`${item.id}-${idx}`} 
                       className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3 hover:border-blue-300 transition-all"
                     >
                       {/* Top Info */}
@@ -796,8 +840,8 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {deposits.map(d => (
-                    <div key={d.id} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+                  {deposits.map((d, idx) => (
+                    <div key={`${d.id}-${idx}`} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-black text-slate-800 text-sm">{d.userName}</span>
@@ -860,8 +904,8 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {withdrawals.map(w => (
-                    <div key={w.id} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
+                  {withdrawals.map((w, idx) => (
+                    <div key={`${w.id}-${idx}`} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
                       <div>
                         <div className="flex items-center gap-2">
                           <span className="font-black text-slate-800 text-sm">{w.userName}</span>
@@ -918,8 +962,8 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {taskProofs.map(t => (
-                    <div key={t.id} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
+                  {taskProofs.map((t, idx) => (
+                    <div key={`${t.id}-${idx}`} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-2">
                       <div className="flex items-center justify-between">
                         <div>
                           <h5 className="font-black text-slate-800 text-sm">{t.jobTitle}</h5>
@@ -975,43 +1019,99 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
                 />
               </div>
 
-              <div className="space-y-2">
-                {filteredUsers.map(u => (
-                  <div key={u.id} className="p-3.5 bg-white rounded-2xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-3">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-black text-slate-800 text-sm">{u.name}</span>
-                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black ${u.verified ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'}`}>
-                          {u.verified ? 'Verified (KYC)' : 'Unverified'}
-                        </span>
+              <div className="space-y-3">
+                {filteredUsers.map((u, idx) => {
+                  const rankInfo = calculateUserRank(u.xp || 0);
+                  const isPassVisible = !!revealedPasswords[u.id];
+
+                  return (
+                    <div key={`${u.id}-${idx}`} className="p-4 bg-white rounded-2xl border border-slate-200 shadow-sm space-y-3 hover:border-blue-300 transition-all">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-black text-slate-800 text-sm">{u.name}</span>
+                            {u.username && (
+                              <span className="px-2 py-0.5 rounded-lg bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-mono font-bold">
+                                @{u.username}
+                              </span>
+                            )}
+                            <span className="px-2 py-0.5 rounded-lg bg-yellow-500/10 border border-yellow-500/30 text-yellow-700 text-[10px] font-black uppercase flex items-center gap-1">
+                              <Award className="w-3 h-3 text-yellow-600" />
+                              {rankInfo.rankName} Tier {rankInfo.tierRoman} ({u.xp || 0} XP)
+                            </span>
+                            {u.isCompanyStaff && (
+                              <span className="px-2 py-0.5 rounded-lg bg-emerald-100 border border-emerald-300 text-emerald-800 text-[10px] font-black uppercase flex items-center gap-1">
+                                <Building2 className="w-3 h-3 text-emerald-600" /> কোম্পানি স্টাফ
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-xs text-slate-500 font-medium mt-1.5 space-y-0.5">
+                            <div>📧 Gmail/Email: <span className="font-mono font-bold text-slate-700">{u.email}</span></div>
+                            <div>📱 Mobile: <span className="font-mono font-bold text-slate-700">{u.mobile || 'N/A'}</span> • রেফার কোড: <span className="font-mono font-bold text-emerald-600">{u.referralCode}</span></div>
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="text-xs text-slate-400 font-bold">সর্বমোট ব্যালেন্স</div>
+                          <div className="text-base font-black text-blue-700">৳{(u.totalBalance || 0).toFixed(2)}</div>
+                          <div className="text-[10px] text-slate-400 font-medium">ইনকাম: ৳{(u.incomeBalance || 0).toFixed(2)}</div>
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-500 font-medium mt-0.5">
-                        {u.mobile || u.email} • কোড: <span className="font-mono font-bold text-emerald-600">{u.referralCode}</span>
+
+                      {/* Password Inspection & Staff Controls Row */}
+                      <div className="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs">
+                        {/* Password display with reveal toggle for Admin */}
+                        <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 px-3 py-1.5 rounded-xl font-mono">
+                          <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
+                          <span className="font-bold text-slate-500">পাসওয়ার্ড:</span>
+                          <span className="font-black text-slate-900 tracking-wider">
+                            {isPassVisible ? (u.passwordHint || 'গোপনীয় (Legacy)') : '••••••••'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => togglePasswordReveal(u.id)}
+                            className="ml-1 text-slate-400 hover:text-indigo-600 transition-colors p-0.5"
+                            title={isPassVisible ? 'লুকান' : 'পাসওয়ার্ড দেখুন'}
+                          >
+                            {isPassVisible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+
+                        {/* Action buttons */}
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleToggleStaff(u)}
+                            className={`px-3 py-1.5 rounded-xl font-black text-xs transition-all flex items-center gap-1 border ${
+                              u.isCompanyStaff 
+                                ? 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100' 
+                                : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
+                            }`}
+                          >
+                            <Building2 className="w-3.5 h-3.5 text-amber-600" />
+                            <span>{u.isCompanyStaff ? 'কোম্পানি স্টাফ বাদ দিন' : 'কোম্পানি স্টাফ করুন'}</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setAdjustBalanceModal({
+                              isOpen: true,
+                              userId: u.id,
+                              userName: u.name,
+                              currentBalance: u.totalBalance || 0,
+                              amount: 100,
+                              mode: 'add'
+                            })}
+                            className="px-3 py-1.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow transition-all flex items-center gap-1"
+                          >
+                            <DollarSign className="w-3.5 h-3.5" /> ব্যালেন্স পরিবর্তন
+                          </button>
+                        </div>
                       </div>
                     </div>
-
-                    <div className="flex items-center gap-3">
-                      <div className="text-right">
-                        <div className="text-xs text-slate-400 font-bold">ব্যালেন্স</div>
-                        <div className="text-base font-black text-blue-700">৳{(u.totalBalance || 0).toFixed(2)}</div>
-                      </div>
-
-                      <button
-                        onClick={() => setAdjustBalanceModal({
-                          isOpen: true,
-                          userId: u.id,
-                          userName: u.name,
-                          currentBalance: u.totalBalance || 0,
-                          amount: 100,
-                          mode: 'add'
-                        })}
-                        className="px-3 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-xl shadow transition-all flex items-center gap-1"
-                      >
-                        <DollarSign className="w-3.5 h-3.5" /> ব্যালেন্স পরিবর্তন
-                      </button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
@@ -1072,6 +1172,43 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
 
                   <div className="grid grid-cols-2 gap-2">
                     <input
+                      type="url"
+                      placeholder="থাম্বনেইল ইউআরএল (Thumbnail URL)"
+                      value={newJobThumbnail}
+                      onChange={(e) => setNewJobThumbnail(e.target.value)}
+                      className="p-2.5 bg-white border border-teal-200 rounded-xl text-xs font-medium"
+                    />
+                    <input
+                      type="url"
+                      placeholder="কাজের লিংক (Target Link)"
+                      value={newJobLink}
+                      onChange={(e) => setNewJobLink(e.target.value)}
+                      className="p-2.5 bg-white border border-teal-200 rounded-xl text-xs font-medium"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <select
+                      value={newJobType}
+                      onChange={(e) => setNewJobType(e.target.value as any)}
+                      className="p-2.5 bg-white border border-teal-200 rounded-xl text-xs font-bold"
+                    >
+                      <option value="screenshot">Screenshot Proof</option>
+                      <option value="video">Video Watch</option>
+                      <option value="link">Link Visit/Join</option>
+                      <option value="social">Social Media</option>
+                    </select>
+                    <input
+                      type="number"
+                      placeholder="সময় (মিনিট)"
+                      value={newJobDuration}
+                      onChange={(e) => setNewJobDuration(Number(e.target.value))}
+                      className="p-2.5 bg-white border border-teal-200 rounded-xl text-xs font-bold"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
                       type="text"
                       placeholder="শর্তসমূহ (কমা দিয়ে আলাদা করুন)"
                       value={newJobReqs}
@@ -1099,8 +1236,8 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
               {/* Current Jobs List */}
               <div className="space-y-2">
                 <h5 className="text-xs font-bold text-slate-500 uppercase">বর্তমানে সক্রিয় কাজসমূহ ({jobs.length})</h5>
-                {jobs.map(j => (
-                  <div key={j.id} className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-2 shadow-sm">
+                {jobs.map((j, idx) => (
+                  <div key={`${j.id}-${idx}`} className="p-3 bg-white rounded-xl border border-slate-200 flex items-center justify-between gap-2 shadow-sm">
                     <div>
                       <div className="font-bold text-xs text-slate-800">{j.title}</div>
                       <span className="text-[11px] text-emerald-600 font-bold">৳{j.reward} • {j.category} • কর্মী: {j.completed || 0}/{j.total || 100}</span>

@@ -114,3 +114,20 @@ describe('Duplicate Submission Detector', () => {
     assert.strictEqual(isDup, false);
   });
 });
+
+describe('User Level Tier V to I Progression', () => {
+  it('starts at Tier V upon account creation (0 XP)', async () => {
+    const { calculateUserRank } = await import('./userLevelUtils.js');
+    const rankInfo = calculateUserRank(0);
+    assert.strictEqual(rankInfo.tierRoman, 'V');
+    assert.strictEqual(rankInfo.rankName, 'Bronze');
+  });
+
+  it('climbs towards Tier I with higher XP within the tier', async () => {
+    const { calculateUserRank } = await import('./userLevelUtils.js');
+    const rankInfoMid = calculateUserRank(50);
+    assert.ok(['IV', 'III'].includes(rankInfoMid.tierRoman));
+    const rankInfoHigh = calculateUserRank(95);
+    assert.strictEqual(rankInfoHigh.tierRoman, 'I');
+  });
+});
