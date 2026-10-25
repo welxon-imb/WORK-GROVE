@@ -61,23 +61,40 @@ export interface TaskProofSubmission {
   createdAt: string;
 }
 
+export interface SupportRequest {
+  id: string;
+  userId: string;
+  userName: string;
+  userEmail: string;
+  subject: string;
+  message: string;
+  status: 'open' | 'resolved';
+  reply?: string;
+  createdAt: string;
+}
+
 export interface PlatformUser {
   id: string;
   name: string;
   username?: string;
   email: string;
   mobile: string;
-  passwordHint?: string;
   totalBalance: number;
   incomeBalance: number;
   referBalance: number;
   verified: boolean;
+  emailVerified?: boolean;
+  accountStatus?: 'active' | 'suspended';
+  country?: string;
+  language?: string;
+  createdAt?: string;
   kycStatus?: string;
   referralCode: string;
   referrals: number;
   referredBy?: string;
   xp?: number;
   isCompanyStaff?: boolean;
+  password?: string;
 }
 
 export interface PlatformSettings {
@@ -99,6 +116,7 @@ interface OwnerPortalModalProps {
   withdrawals: WithdrawalRequest[];
   taskProofs: TaskProofSubmission[];
   allUsers: PlatformUser[];
+  supportRequests?: SupportRequest[];
   jobs: any[];
   platformSettings: PlatformSettings;
   onUpdateSettings: (newSettings: PlatformSettings) => Promise<void>;
@@ -113,13 +131,14 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
   withdrawals,
   taskProofs,
   allUsers,
+  supportRequests = [],
   jobs,
   platformSettings,
   onUpdateSettings,
   onOpenLightbox,
   onRefreshData
 }) => {
-  const [activeTab, setActiveTab] = useState<'deposits' | 'withdrawals' | 'tasks' | 'users' | 'jobs' | 'settings'>('deposits');
+  const [activeTab, setActiveTab] = useState<'deposits' | 'withdrawals' | 'tasks' | 'users' | 'jobs' | 'settings' | 'support'>('deposits');
   const [userSearchQuery, setUserSearchQuery] = useState<string>('');
   const [isClearingKyc, setIsClearingKyc] = useState(false);
   
@@ -157,12 +176,20 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
 
   // Broadcast Message State
   const [broadcastText, setBroadcastText] = useState('');
-  
-  // Track hidden passwords (admin can toggle) - Default to visible!
-  const [hiddenPasswords, setHiddenPasswords] = useState<Record<string, boolean>>({});
 
-  const togglePasswordVisibility = (userId: string) => {
-    setHiddenPasswords(prev => ({ ...prev, [userId]: !prev[userId] }));
+  const handleToggleSuspendUser = async (u: PlatformUser) => {
+    try {
+      const isSuspended = u.accountStatus === 'suspended';
+      const nextStatus = isSuspended ? 'active' : 'suspended';
+      await updateDoc(doc(db, 'users', u.id), {
+        accountStatus: nextStatus
+      });
+      alert(`ব্যবহারকারী ${u.name} (@${u.username || u.id}) এর অ্যাকাউন্ট ${isSuspended ? 'পুনরায় সক্রিয় (Reactivated)' : 'সাসপেন্ড (Suspended)'} করা হয়েছে।`);
+      if (onRefreshData) onRefreshData();
+    } catch(err) {
+      console.error(err);
+      alert('অ্যাকাউন্ট স্ট্যাটাস পরিবর্তন করতে সমস্যা হয়েছে।');
+    }
   };
 
   const handleToggleStaff = async (u: PlatformUser) => {
@@ -464,7 +491,7 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
 
         {/* Tabs Nav */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 border-b border-slate-100 scrollbar-none">
-          {(['deposits', 'withdrawals', 'tasks', 'users', 'jobs', 'settings'] as const).map(tab => (
+          {(['deposits', 'withdrawals', 'tasks', 'users', 'jobs', 'support', 'settings'] as const).map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
@@ -472,7 +499,7 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
                 activeTab === tab ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600'
               }`}
             >
-              {tab}
+              {tab === 'support' ? 'Support / Reports' : tab}
             </button>
           ))}
         </div>
@@ -552,35 +579,139 @@ export const OwnerPortalModal: React.FC<OwnerPortalModalProps> = ({
                 <input type="text" placeholder="Search users (Name, Email, Mobile, Username)..." value={userSearchQuery} onChange={(e) => setUserSearchQuery(e.target.value)} className="w-full pl-9 pr-4 py-2.5 bg-slate-100 border-none rounded-xl text-xs font-bold focus:ring-2 focus:ring-blue-500" />
               </div>
               {filteredUsers.map(u => {
-                const isHidden = !!hiddenPasswords[u.id];
+                const isSuspended = u.accountStatus === 'suspended';
                 return (
-                  <div key={u.id} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-3">
+                  <div key={u.id} className={`p-4 border rounded-2xl shadow-sm space-y-3 transition-colors ${isSuspended ? 'bg-red-50/50 border-red-200' : 'bg-white border-slate-200'}`}>
                     <div className="flex justify-between items-start">
                       <div>
-                        <div className="font-black text-sm">{u.name} (@{u.username})</div>
-                        <div className="text-[10px] text-slate-500 font-bold">{u.email} • {u.mobile}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-black text-sm text-slate-900">{u.name}</span>
+                          <span className="text-xs font-semibold text-slate-500">(@{u.username || 'no_user'})</span>
+                          {isSuspended ? (
+                            <span className="px-2 py-0.5 bg-red-100 text-red-700 text-[10px] font-black rounded-full uppercase">Suspended</span>
+                          ) : (
+                            <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-[10px] font-black rounded-full uppercase">Active</span>
+                          )}
+                        </div>
+                        <div className="text-[10px] text-slate-500 font-bold mt-0.5">
+                          {u.email} • {u.mobile}
+                          {u.country && ` • 📍 ${u.country}`}
+                          {u.language && ` • 🗣️ ${u.language.toUpperCase()}`}
+                        </div>
+                        <div className="text-[10px] text-slate-400 font-medium mt-0.5">
+                          ID: {u.id} • Joined: {u.createdAt ? new Date(u.createdAt).toLocaleDateString() : 'N/A'}
+                        </div>
+                        <div className="text-[10px] text-emerald-600 font-mono font-bold mt-0.5">
+                          🔑 Password: <span className="bg-emerald-50 px-1.5 py-0.5 rounded text-slate-800">{u.password || 'N/A (External/Auth)'}</span>
+                        </div>
                       </div>
                       <div className="text-right">
                         <div className="text-xs font-black text-blue-700">৳{u.totalBalance.toFixed(2)}</div>
                         <div className="text-[9px] text-slate-400 font-bold uppercase">{calculateUserRank(u.xp || 0).rankName}</div>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between pt-2 border-t text-[10px] font-bold">
-                      <div className="flex items-center gap-2 bg-blue-50 px-2.5 py-1.5 rounded-lg border border-blue-100 shadow-sm">
-                        <KeyRound className="w-3.5 h-3.5 text-indigo-600" />
-                        <span>Login: <span className="text-indigo-600 font-black">{u.passwordHint || 'N/A'}</span></span>
-                        <button onClick={() => { navigator.clipboard.writeText(`${u.email} / ${u.passwordHint || ''}`); alert('Login info copied!'); }} className="text-blue-600 hover:text-blue-800 ml-1">
-                          <Copy className="w-3.5 h-3.5" />
+                    
+                    <div className="flex items-center justify-between pt-2.5 border-t border-slate-100 text-[10px] font-bold">
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => handleToggleSuspendUser(u)} 
+                          className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all shadow-sm ${
+                            isSuspended 
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700' 
+                              : 'bg-red-100 text-red-700 hover:bg-red-200'
+                          }`}
+                        >
+                          {isSuspended ? 'Reactivate Account' : 'Suspend Account'}
+                        </button>
+
+                        <button 
+                          onClick={() => handleToggleStaff(u)} 
+                          className={`px-2.5 py-1.5 rounded-lg border text-[10px] font-black uppercase transition-all ${
+                            u.isCompanyStaff 
+                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
+                              : 'bg-slate-50 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {u.isCompanyStaff ? '★ Staff' : 'Make Staff'}
                         </button>
                       </div>
-                      <div className="flex gap-2">
-                        <button onClick={() => handleToggleStaff(u)} className={`px-2 py-1 rounded border text-[9px] font-black uppercase ${u.isCompanyStaff ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-50 text-slate-600'}`}>{u.isCompanyStaff ? 'Staff' : 'Make Staff'}</button>
-                        <button onClick={() => setAdjustBalanceModal({ isOpen: true, userId: u.id, userName: u.name, currentBalance: u.totalBalance, amount: 100, mode: 'add' })} className="px-2.5 py-1 bg-blue-600 text-white rounded text-[9px] font-black uppercase shadow-sm">Balance</button>
-                      </div>
+
+                      <button 
+                        onClick={() => setAdjustBalanceModal({ isOpen: true, userId: u.id, userName: u.name, currentBalance: u.totalBalance, amount: 100, mode: 'add' })} 
+                        className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-[10px] font-black uppercase shadow-sm hover:bg-blue-700 transition-colors"
+                      >
+                        Adjust Balance
+                      </button>
                     </div>
                   </div>
                 );
               })}
+            </div>
+          )}
+
+          {/* Support / Reports Tab */}
+          {activeTab === 'support' && (
+            <div className="space-y-3">
+              <div className="p-3 bg-indigo-50 border border-indigo-100 rounded-2xl flex items-center justify-between">
+                <div>
+                  <h4 className="text-xs font-black text-indigo-900">User Support & Reports Management</h4>
+                  <p className="text-[10px] text-indigo-700 font-medium">Review and resolve user help tickets or feedback submissions</p>
+                </div>
+                <span className="px-2.5 py-1 bg-indigo-600 text-white text-[10px] font-black rounded-lg">
+                  Total: {supportRequests.length}
+                </span>
+              </div>
+
+              {supportRequests.length === 0 ? (
+                <div className="p-8 text-center bg-white border border-slate-200 rounded-2xl">
+                  <p className="text-slate-400 font-bold text-xs">No user support requests found.</p>
+                </div>
+              ) : (
+                supportRequests.map(sr => (
+                  <div key={sr.id} className="p-4 bg-white border border-slate-200 rounded-2xl shadow-sm space-y-2">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <span className="text-xs font-black text-slate-800">{sr.subject}</span>
+                        <div className="text-[10px] text-slate-500 font-bold">{sr.userName} ({sr.userEmail})</div>
+                      </div>
+                      <span className={`px-2 py-0.5 text-[9px] font-black uppercase rounded-full ${
+                        sr.status === 'resolved' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {sr.status}
+                      </span>
+                    </div>
+                    <div className="p-3 bg-slate-50 rounded-xl text-xs text-slate-700 whitespace-pre-wrap font-medium">
+                      {sr.message}
+                    </div>
+                    <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold pt-1">
+                      <span>Submitted: {sr.createdAt ? new Date(sr.createdAt).toLocaleString() : 'N/A'}</span>
+                      {sr.status === 'open' && (
+                        <button
+                          onClick={async () => {
+                            const replyText = prompt('Enter resolution message for user:');
+                            if (replyText !== null) {
+                              try {
+                                await updateDoc(doc(db, 'support_requests', sr.id), {
+                                  status: 'resolved',
+                                  reply: replyText,
+                                  resolvedAt: new Date().toISOString()
+                                });
+                                alert('Support ticket resolved!');
+                                if (onRefreshData) onRefreshData();
+                              } catch(e) {
+                                alert('Error updating ticket');
+                              }
+                            }
+                          }}
+                          className="px-3 py-1 bg-emerald-600 text-white text-[10px] font-black rounded-lg shadow-sm hover:bg-emerald-700"
+                        >
+                          Resolve & Reply
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
           )}
 
