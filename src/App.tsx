@@ -248,8 +248,9 @@ export default function App() {
   // Admin Panel State (triggered by 5 taps on WG logo)
   const [logoTapCount, setLogoTapCount] = useState<number>(0);
   const [showAdminLogin, setShowAdminLogin] = useState<boolean>(false);
-  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(() => localStorage.getItem('wg_admin_auth') === 'true');
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState<boolean>(false);
   const [adminPasswordInput, setAdminPasswordInput] = useState<string>('');
+  const [showNoticeModal, setShowNoticeModal] = useState<boolean>(false);
 
   // Support Requests State
   const [supportRequests, setSupportRequests] = useState<SupportRequest[]>([]);
@@ -337,6 +338,9 @@ export default function App() {
     }
   });
 
+  // Profile Leaderboard Tab State
+  const [profileLeaderboardTab, setProfileLeaderboardTab] = useState<'referrals' | 'withdrawals'>('referrals');
+
   // Owner Portal & System Handler States
   const [showOwnerPortal, setShowOwnerPortal] = useState<boolean>(false);
   const [deposits, setDeposits] = useState<DepositRequest[]>([]);
@@ -354,7 +358,7 @@ export default function App() {
       ownerRocket: '01911223344',
       minWithdraw: 100,
       referralBonus: 10,
-      noticeText: 'পছন্দ স্যালারি নিয়ে কাজ শুরু করে দিন সময় নষ্ট না করে!',
+      noticeText: 'পছন্দ স্যালারি নিয়ে কাজ শুরু করে দিন সময়',
       companyRevenue: 0,
       gmailRate: 5,
       specialWorkInfo: ''
@@ -460,6 +464,29 @@ export default function App() {
       setAuthView('signup');
     }
   }, []);
+
+  // PWA Install Prompt Listener & Handler
+  useEffect(() => {
+    const handleBeforeInstall = (e: Event) => {
+      e.preventDefault();
+      (window as any).deferredPrompt = e;
+    };
+    window.addEventListener('beforeinstallprompt', handleBeforeInstall);
+    return () => window.removeEventListener('beforeinstallprompt', handleBeforeInstall);
+  }, []);
+
+  const handleInstallApp = async () => {
+    const promptEvent = (window as any).deferredPrompt;
+    if (promptEvent) {
+      promptEvent.prompt();
+      const { outcome } = await promptEvent.userChoice;
+      if (outcome === 'accepted') {
+        (window as any).deferredPrompt = null;
+      }
+    } else {
+      alert('WORK GROVE অ্যাপটি সরাসরি ইনস্টল করতে ব্রাউজারের Menu (...) বা Share আইকন থেকে "Add to Home Screen" বা "Install App" সিলেক্ট করুন।');
+    }
+  };
 
   // Site Age Timer State with live ticking
   const [siteAge, setSiteAge] = useState({ years: 1, days: 47, hours: 14, minutes: 35, seconds: 42 });
@@ -2244,6 +2271,10 @@ export default function App() {
                   <PlusCircle className="w-4 h-4 text-emerald-600" />
                   <span>Post Micro Job</span>
                 </button>
+                <button onClick={() => { handleInstallApp(); setShowSidebarMenu(false); }} className="w-full flex items-center gap-3 p-2.5 rounded-xl hover:bg-emerald-50 text-xs font-bold text-emerald-700 bg-emerald-50/50 border border-emerald-200">
+                  <ExternalLink className="w-4 h-4 text-emerald-600" />
+                  <span>📲 Download / Install App</span>
+                </button>
               </div>
             </div>
 
@@ -2281,7 +2312,7 @@ export default function App() {
                   </div>
                   <div>
                     <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
-                      <span>{t(language, 'siteAge')}</span>
+                      <span>সাইটের বয়স</span>
                       <span className="text-[10px] px-2 py-0.5 rounded-full bg-blue-100 text-blue-800 font-bold">Live Counter</span>
                     </h4>
                     <p className="text-[11px] font-bold text-emerald-600 flex items-center gap-1.5 mt-0.5">
@@ -2295,8 +2326,8 @@ export default function App() {
                 </div>
 
                 <div className="flex items-center gap-1.5 px-3 py-1 bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-700 text-xs font-black rounded-xl border border-emerald-200/80 shadow-sm animate-pulse">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Secure Server</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+                  <span>Live</span>
                 </div>
               </div>
 
@@ -2380,14 +2411,21 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-gradient-to-r from-amber-400 to-orange-500 text-white border border-amber-300 rounded-3xl p-3.5 flex items-center gap-3 shadow-lg">
-              <div className="p-2.5 bg-white/20 backdrop-blur rounded-2xl shadow-inner">
-                <Volume2 className="w-5 h-5 animate-pulse" />
+            {/* Notice Banner - Slimmer UI (Clickable) */}
+            <div 
+              onClick={() => setShowNoticeModal(true)}
+              className="bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 rounded-full px-3 py-1.5 shadow-md flex items-center gap-2.5 cursor-pointer hover:border-blue-500 transition-all transform hover:scale-[1.01]"
+              title="নোটিসের বিস্তারিত দেখতে ক্লিক করুন"
+            >
+              <span className="px-2.5 py-0.5 bg-blue-600 text-white font-black text-[10px] rounded-full uppercase shrink-0">
+                Notice
+              </span>
+              <span className="text-slate-300 dark:text-slate-700">|</span>
+              <Volume2 className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0 animate-pulse" />
+              <div className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate flex-1">
+                {platformSettings.noticeText}
               </div>
-              <div className="flex-1 overflow-hidden">
-                <div className="text-xs font-black uppercase tracking-wider">{t(language, 'notice')}</div>
-                <div className="text-[11px] font-bold mt-0.5 whitespace-nowrap animate-[marquee_20s_linear_infinite]">{platformSettings.noticeText}</div>
-              </div>
+              <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
             </div>
 
             {/* Special Work Info Display if set by Admin */}
@@ -3956,6 +3994,40 @@ export default function App() {
             >
               বন্ধ করুন (Close)
             </button>
+          </div>
+        </div>
+      )}
+      {/* MODAL: NOTICE DETAILS */}
+      {showNoticeModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-md z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-blue-200 dark:border-blue-800 space-y-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-lg">
+                  <Volume2 className="w-5 h-5 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">অফিশিয়াল নোটিশ</h3>
+                  <p className="text-[10px] text-blue-600 dark:text-blue-400 font-bold">Work Grove Official Announcement</p>
+                </div>
+              </div>
+              <button onClick={() => setShowNoticeModal(false)} className="p-1.5 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-4 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/60 dark:to-indigo-950/60 rounded-2xl border border-blue-200 dark:border-blue-800 text-xs text-slate-800 dark:text-slate-200 font-bold leading-relaxed space-y-2">
+              <p className="whitespace-pre-wrap">{platformSettings.noticeText}</p>
+            </div>
+
+            <div className="pt-2">
+              <button 
+                onClick={() => setShowNoticeModal(false)}
+                className="w-full py-3.5 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white font-black text-xs rounded-2xl shadow-lg transition-all"
+              >
+                বোজলাম / বন্ধ করুন (Close)
+              </button>
+            </div>
           </div>
         </div>
       )}
